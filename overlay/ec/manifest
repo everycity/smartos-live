@@ -1,0 +1,51 @@
+f etc/bashrc 0444 root sys
+f etc/issue 0444 root sys
+f etc/release 0444 root sys
+
+f lib/svc/method/net-flipflop 0555 root bin
+f lib/svc/manifest/network/network-flipflop.xml 0444 root sys
+
+# Solaris 10 brand files
+d etc/brand/solaris10 0755 root sys
+f etc/brand/solaris10/smf_disable.conf 0644 root sys
+f etc/brand/solaris10/pkgrm.conf 0644 root sys
+f etc/zones/SUNWsolaris10.xml 0444 root bin
+d usr/kernel/brand 0755 root sys
+d usr/kernel/brand/amd64 0755 root sys
+f usr/kernel/brand/amd64/s10_brand 0755 root sys
+f usr/lib/amd64/s10_brand.so.1 0755 root bin
+f usr/lib/amd64/s10_npreload.so.1 0755 root bin
+d usr/lib/brand/solaris10 0755 root bin
+f usr/lib/brand/solaris10/config.xml 0444 root root
+f usr/lib/brand/solaris10/postattach 0755 root root
+f usr/lib/brand/solaris10/s10_replacefile 0755 root root
+f usr/lib/brand/solaris10/uninstall 0755 root root
+f usr/lib/brand/solaris10/s10_boot 0755 root root
+f usr/lib/brand/solaris10/poststate 0755 root root
+f usr/lib/brand/solaris10/prestate 0755 root root
+f usr/lib/brand/solaris10/s10_net_physical 0755 root root
+s usr/lib/brand/solaris10/64=amd64
+f usr/lib/brand/solaris10/detach 0755 root root
+f usr/lib/brand/solaris10/s10_support 0755 root root
+f usr/lib/brand/solaris10/clone 0755 root root
+f usr/lib/brand/solaris10/version 0444 root root
+f usr/lib/brand/solaris10/smf_disable.lst 0444 root root
+f usr/lib/brand/solaris10/pkgrm.lst 0444 root root
+f usr/lib/brand/solaris10/common.ksh 0444 root root
+f usr/lib/brand/solaris10/preuninstall 0755 root root
+f usr/lib/brand/solaris10/s10_isaexec_wrapper 0755 root root
+f usr/lib/brand/solaris10/image_install 0755 root root
+f usr/lib/brand/solaris10/platform.xml 0444 root root
+f usr/lib/brand/solaris10/solaris10_librtld_db.so.1 0755 root root
+f usr/lib/brand/solaris10/s10_python_wrapper 0755 root root
+f usr/lib/brand/solaris10/attach 0755 root root
+f usr/lib/brand/solaris10/p2v 0755 root root
+f usr/lib/brand/solaris10/s10_native 0755 root root
+d usr/lib/brand/solaris10/amd64 0755 root root
+f usr/lib/brand/solaris10/amd64/solaris10_librtld_db.so.1 0755 root root
+f usr/lib/s10_brand.so.1 0755 root bin
+f usr/lib/s10_npreload.so.1 0755 root bin
+f usr/lib/brand/solaris10/statechange 0755 root root
+
+d root/.ssh 0700 root root
+f root/.ssh/authorized_keys 0600 root root

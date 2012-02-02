@@ -1,0 +1,146 @@
+#!/usr/perl5/bin/perl
+
+#
+# This file and its contents are supplied under the terms of the
+# Common Development and Distribution License ("CDDL)". You may
+# only use this file in accordance with the terms of the CDDL.
+#
+# A full copy of the text of the CDDL should have accompanied this
+# source. A copy of the CDDL is also available via the Internet at
+# http://www.illumos.org/license/CDDL.
+#
+
+#
+# Copyright 2011 EveryCity Ltd. All rights reserved.
+#
+
+
+use strict;
+use Sun::Solaris::Kstat;
+use Time::HiRes;
+
+my $Kstat = Sun::Solaris::Kstat->new();
+
+my $NIC_admin;
+my $NIC_admin_master;
+my $NIC_admin_slave;
+
+my $aggr_name;
+my $active_nic;
+my $standby_nic;
+
+sub get_active_nic()
+{
+    my $cmd_output = `dladm show-aggr -xpo port $aggr_name`;
+    if ($? == 0) {
+        foreach my $port (split /\n/, $cmd_output) {
+		    if (!$port eq '') {
+			    $port =~ s/^\s+//;
+			    return $port;
+		    }
+	    }
+    } else {
+        printf "Unable to get an active nic of the $aggr_name interface\n";
+        exit 1;
+    }
+
+}
+
+sub flip_nics()
+{
+    # add standby nic to the aggr interface
+    `/usr/sbin/dladm add-aggr -t -l $standby_nic $aggr_name`;
+    if ($? == 0) {
+        printf "added $standby_nic to the $aggr_name\n";
+        # remove active nic from the aggr interface
+        `dladm remove-aggr -t -l $active_nic $aggr_name`;
+        if ($? == 0) {
+            printf "removed $active_nic from the $aggr_name\n";
+            ($active_nic, $standby_nic) = ($standby_nic, $active_nic);
+        } else {
+            # try to back out the add-aggr change made
+            # earlier if remove-aggr has failed
+            printf "failed to remove $active_nic from the $aggr_name\n";
+            printf "removing just added $standby_nic from the $aggr_name\n";
+            `dladm remove-aggr -t -l $standby_nic $aggr_name`;
+        }
+    }
+}
+
+# <SmartOS specific>
+my $cmd_output = `/usr/bin/sysinfo -p`;
+
+if ($? == 0) {
+	foreach my $line (split /\n/, $cmd_output) {
+		(my $var_name, my $var_value) = split /=/, $line, 2;
+        $var_value =~ s/['|"]//g;
+		if ($var_name eq 'NIC_admin') {
+            $NIC_admin=$var_value;
+        }
+        if ($var_name eq 'NIC_admin_master') {
+            $NIC_admin_master=$var_value;
+        }
+        if ($var_name eq 'NIC_admin_slave') {
+            $NIC_admin_slave=$var_value;
+        }
+	}
+} else {
+    printf "Failed to run /usr/bin/sysinfo -p\n";
+    exit 1;
+}
+# </SmartOS specific>
+
+# if you are not on SmartOS, you can remove the section above and uncomment and
+# edit the variables below:
+
+# $NIC_admin='aggr0';
+# $NIC_admin_master='e1000g0';
+# $NIC_admin_slave='e1000g1';
+
+
+if ($NIC_admin && $NIC_admin_master && $NIC_admin_slave) {
+    $aggr_name = $NIC_admin;
+    $active_nic = get_active_nic();
+    #printf "active_nic=$active_nic\n";
+    if ($active_nic eq $NIC_admin_master) {
+        $standby_nic = $NIC_admin_slave;
+    } else {
+        $standby_nic = $NIC_admin_master;
+    }
+    
+    #printf "NIC_admin=$NIC_admin NIC_admin_master=$NIC_admin_master NIC_admin_slave=$NIC_admin_slave\n";
+    #printf "aggr_name=$aggr_name active_nic=$active_nic standby_nic=$standby_nic\n";
+
+	while (1) {
+        # link_state value of 1 means that the link is up
+
+        # auto fail-back if both nics are up
+        if (($Kstat->{"link"}->{0}->{$active_nic}->{"link_state"} == 1) &&
+            ($Kstat->{"link"}->{0}->{$standby_nic}->{"link_state"} == 1) &&
+            ($active_nic eq $NIC_admin_slave)) {
+            
+            flip_nics();
+            
+        }
+
+        if ($Kstat->{"link"}->{0}->{$active_nic}->{"link_state"} != 1) {
+            #printf "$active_nic is down\n";
+            if ($Kstat->{"link"}->{0}->{$standby_nic}->{"link_state"} == 1) {
+                #printf "$standby_nic is up\n";
+
+                flip_nics();
+
+            } else {
+                #printf "and $standby_nic is down :~(\n";
+            }
+        }
+
+        Time::HiRes::sleep(0.2);
+        $Kstat->update();
+    }
+
+} else {
+	# sleep indefinitely
+	sleep
+}
+
