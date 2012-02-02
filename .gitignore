@@ -1,5 +1,5 @@
-/configure.*
-/configure-*
+#/configure.*
+#/configure-*
 /output
 /projects
 /proto
