@@ -5,6 +5,9 @@ f etc/release 0444 root sys
 f lib/svc/method/net-flipflop 0555 root bin
 f lib/svc/manifest/network/network-flipflop.xml 0444 root sys
 
+f lib/svc/method/ec-autostart 0555 root bin
+f lib/svc/manifest/ec-autostart.xml 0444 root sys
+
 # Solaris 10 brand files
 d etc/brand/solaris10 0755 root sys
 f etc/brand/solaris10/smf_disable.conf 0644 root sys
