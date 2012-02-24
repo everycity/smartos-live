@@ -7,8 +7,10 @@ PATH=/opt/local/bin:/opt/local/sbin:/opt/local/gcc34/bin:/usr/xpg4/bin:/usr/bin:
 LOCAL_SUBDIRS:=$(shell ls projects/local)
 MANIFEST=manifest.gen
 OVERLAYS:=$(shell cat overlay/order)
+JSSTYLE=$(ROOT)/tools/jsstyle/jsstyle
+JSLINT=$(ROOT)/tools/javascriptlint/build/install/jsl
 ifeq ($(EXTRA_TARBALL),)
-EXTRA_TARBALL:=$(shell ls `pwd`/illumos-extra*.tgz | tail -n1 && echo $?)
+EXTRA_TARBALL:=$(shell ls `pwd`/illumos-extra*.tgz 2> /dev/null | tail -n1 && echo $?)
 endif
 world: 0-illumos-stamp 0-extra-stamp 0-livesrc-stamp 0-local-stamp \
 	0-tools-stamp 0-man-stamp 0-devpro-stamp
@@ -95,6 +97,15 @@ endif
 tools/cryptpass: tools/cryptpass.c
 	(cd ${ROOT}/tools && gcc -Wall -W -O2 -o cryptpass cryptpass.c)
 
+$(JSLINT):
+	@(cd $(ROOT)/tools/javascriptlint; make CC=gcc install)
+
+check: $(JSLINT)
+	@$(JSLINT) --conf=$(ROOT)/tools/jsl.node.conf src/vm/sbin/*.js
+	@$(JSLINT) --conf=$(ROOT)/tools/jsl.node.conf src/vm/node_modules/{qmp,VM}.js
+	@$(JSSTYLE) -o indent=4,strict-indent=1,doxygen,unparenthesized-return=0,continuation-at-front=1,leading-right-paren-ok=1 src/vm/sbin/*.js
+	@$(JSSTYLE) -o indent=4,strict-indent=1,doxygen,unparenthesized-return=0,continuation-at-front=1,leading-right-paren-ok=1 src/vm/node_modules/{qmp,VM}.js
+
 clean:
 	rm -f $(MANIFEST)
 	rm -rf $(ROOT)/$(MPROTO)/*
@@ -108,4 +119,4 @@ clean:
 	(cd $(ROOT) && mkdir -p $(PROTO))
 	rm -f 0-*-stamp
 
-.PHONY: manifest
+.PHONY: manifest check
