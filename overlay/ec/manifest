@@ -52,3 +52,6 @@ f usr/lib/brand/solaris10/statechange 0755 root root
 
 d root/.ssh 0700 root root
 f root/.ssh/authorized_keys 0600 root root
+
+# /ec directory for smartos-userland
+d ec 0755 root sys
