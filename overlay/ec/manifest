@@ -50,8 +50,14 @@ f usr/lib/s10_brand.so.1 0755 root bin
 f usr/lib/s10_npreload.so.1 0755 root bin
 f usr/lib/brand/solaris10/statechange 0755 root root
 
+# driver customizations
+f kernel/drv/e1000g.conf 0644 root sys
+
 d root/.ssh 0700 root root
 f root/.ssh/authorized_keys 0600 root root
 
 # /ec directory for smartos-userland
 d ec 0755 root sys
+
+s usr/bin/perl=/ec/bin/perl
+s usr/bin/python=/ec/bin/python
