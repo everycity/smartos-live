@@ -1,18 +1,16 @@
-// Copyright 2011 Joyent, Inc.  All rights reserved.
+// Copyright 2012 Joyent, Inc.  All rights reserved.
 //
 // These tests ensure that default values don't change accidentally.
 //
 
 process.env['TAP'] = 1;
 var test = require('tap').test;
-var path = require('path');
-var VM = require('VM');
+var VM = require('/usr/vm/node_modules/VM');
 var vmtest = require('../common/vmtest.js');
 
 VM.loglevel = 'DEBUG';
 
-var dataset_uuid = '47e6af92-daf0-11e0-ac11-473ca1173ab0';
-//var vm_dataset_uuid = '56108678-1183-11e1-83c3-ff3185a5b47f';
+var image_uuid = vmtest.CURRENT_SMARTOS;
 
 // Format:
 // 1. property of the vmobj
@@ -27,20 +25,24 @@ var zone_defaults = {
     'quota': [10],
     'cpu_shares': [100],
     'zfs_io_priority': [100],
-    'zfs_storage_pool_name': ['zones'],
+    'zpool': ['zones'],
     'max_lwps': [2000],
     'tmpfs': ['max_physical_memory', zone_property],
     'max_locked_memory': ['max_physical_memory', zone_property],
     'max_swap': ['max_physical_memory', zone_property],
     'max_physical_memory': [256],
-    'billing_id': [dataset_uuid],
-    'dataset_uuid': [dataset_uuid],
+    'billing_id': ['00000000-0000-0000-0000-000000000000'],
+    'image_uuid': [image_uuid],
     'zfs_filesystem': ['uuid', prefix_zones],
+    'zfs_root_recsize': [131072],
     'owner_uuid': ['00000000-0000-0000-0000-000000000000'],
     'uuid': ['uuid', state_property],
     'dns_domain': ['local'],
-    'limit_priv': ['default,dtrace_proc,dtrace_user'],
-    'compute_node_uuid': ['<NON-EMPTY>'],
+    'limit_priv': ['default'],
+    'last_modified': ['<NON-EMPTY>'],
+    'server_uuid': ['<NON-EMPTY>'],
+    'datacenter_name': ['<OPTIONAL-NON-EMPTY>'],
+    'headnode_id': ['<OPTIONAL-NON-EMPTY>'],
     'create_timestamp': ['<NON-EMPTY>'],
     'nics': ['<EMPTY-ARRAY>'],
     'tags': ['<EMPTY-OBJ>'],
@@ -48,10 +50,11 @@ var zone_defaults = {
     'internal_metadata': ['<EMPTY-OBJ>']
 };
 
-// properties that are only for OS VMs
+// properties that are only there by default for OS VMs
 var zone_only = [
     'tmpfs',
-    'dataset_uuid'
+    'dns_domain',
+    'image_uuid'
 ];
 
 // values specific to KVM
@@ -59,6 +62,7 @@ var kvm_defaults = {
     'ram': [256],
     'brand': ['kvm'],
     'max_physical_memory': [1280],
+    'limit_priv': ['default,-file_link_any,-net_access,-proc_fork,-proc_info,-proc_session'],
     'billing_id': ['00000000-0000-0000-0000-000000000000'],
     'disks': ['<EMPTY-ARRAY>'],
     'vcpus': [1]
@@ -106,14 +110,20 @@ function check_property(t, state, prop, expected, transform)
         t.ok(JSON.stringify(value) === '[]', prop + ' [],' + JSON.stringify(value));
     } else if (expected === '<EMPTY-OBJ>') {
         t.ok(JSON.stringify(value) === '{}', prop + ' {},' + JSON.stringify(value));
+    } else if (expected === '<OPTIONAL-NON-EMPTY>') {
+        if (value !== undefined) {
+            // this is optional, but if it exists it should be non-empty
+            t.ok(value.toString().length > 0, prop + ' [' + expected + ',' + value + ']');
+        }
     } else {
-        t.ok(value === expected, prop + ' [' + expected + typeof(expected) + ',' + value + typeof(value) + ']');
+        t.ok(value === expected, prop + ' [' + expected + ':' + typeof(expected)
+            + ',' + value + ':' + typeof(value) + ']');
     }
 }
 
 function check_values(t, state)
 {
-    if (state.brand === 'joyent') {
+    if (state.brand === 'joyent-minimal') {
         defaults = zone_defaults;
     } else if (state.brand === 'kvm') {
         defaults = kvm_defaults;
@@ -144,8 +154,8 @@ function check_values(t, state)
 }
 
 test('check default zone properties', {'timeout': 240000}, function(t) {
-    state = {'brand': 'joyent'};
-    vmtest.on_new_vm(t, dataset_uuid, {'do_not_inventory': true}, state, [
+    state = {'brand': 'joyent-minimal'};
+    vmtest.on_new_vm(t, image_uuid, {'do_not_inventory': true}, state, [
         function (cb) {
             VM.load(state.uuid, function(err, obj) {
                 if (err) {

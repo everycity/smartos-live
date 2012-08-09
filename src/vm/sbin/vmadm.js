@@ -1,4 +1,4 @@
-#!/usr/bin/node
+#!/usr/node/bin/node
 /*
  * CDDL HEADER START
  *
@@ -26,11 +26,10 @@
  */
 
 var fs = require('fs');
-var VM = require('VM');
-var nopt = require('nopt');
-var onlyif = require('onlyif');
-var path = require('path');
-var sprintf = require('sprintf').sprintf;
+var VM = require('/usr/vm/node_modules/VM');
+var nopt = require('/usr/vm/node_modules/nopt');
+var onlyif = require('/usr/node/node_modules/onlyif');
+var sprintf = require('/usr/node/node_modules/sprintf').sprintf;
 var tty = require('tty');
 var util = require('util');
 
@@ -44,10 +43,13 @@ var COMMANDS = [
     'stop', 'halt',
     'help',
     'info',
+    'install',
     'get', 'json',
     'list',
     'lookup',
     'reboot',
+    'receive', 'recv',
+    'send',
     'sysrq',
     'update'
 ];
@@ -62,7 +64,7 @@ var LIST_FIELDS = {
     alias: {header: 'ALIAS', width: 10},
     autoboot: {header: 'AUTOBOOT', width: 8},
     billing_id: {header: 'BILLING_ID', width: 36},
-    brand: {header: 'BRAND', width: 6},
+    brand: {header: 'BRAND', width: 14},
     cpu_cap: {header: 'CPU_CAP', width: 7},
     cpu_shares: {header: 'CPU_SHARE', width: 9},
     cpu_type: {header: 'CPU_TYPE', width: 8},
@@ -88,7 +90,7 @@ var LIST_FIELDS = {
     uuid: {header: 'UUID', width: 36},
     vcpus: {header: 'VCPUS', width: 5},
     zfs_io_priority: {header: 'IO_PRIORITY', width: 11},
-    zfs_storage_pool_name: {header: 'ZFS_POOL', width: 12},
+    zpool: {header: 'ZPOOL', width: 12},
     zonename: {header: 'ZONENAME', width: 12},
     zonepath: {header: 'ZONEPATH', width: 40},
     zoneid: {header: 'ZONEID', width: 6}
@@ -122,9 +124,12 @@ function usage(message, code)
     out('delete <uuid>');
     out('get <uuid>');
     out('info <uuid> [type,...]');
+    out('install <uuid>');
     out('list [-p] [-H] [-o field,...] [-s field,...] [field=value ...]');
     out('lookup [-j|-1] [field=value ...]');
     out('reboot <uuid> [-F]');
+    out('receive [-f <filename>]');
+    out('send <uuid> [target]');
     out('start <uuid> [option=value ...]');
     out('stop <uuid> [-F]');
     out('sysrq <uuid> <nmi|screenshot>');
@@ -187,8 +192,7 @@ function getListProperties(field)
         return {header: field.toUpperCase(), width: 20};
     }
 
-    // default, really shouldn't get here
-    return {header: field.toUpperCase(), width: 20};
+    return undefined;
 }
 
 function getUUID(command, p)
@@ -208,13 +212,27 @@ function getUUID(command, p)
     return usage('Invalid or missing UUID for ' + command);
 }
 
-function parseKeyEqualsValue(args)
+/*
+ * When the 'multiple' argument is true, we return an array of values like:
+ *
+ * [ {key1: value1}, {key2: value2} ]
+ *
+ * when false we return an object and where keys collide, last one wins.
+ */
+function parseKeyEqualsValue(args, multiple)
 {
     var arg;
     var key;
     var kv;
-    var parsed = {};
+    var obj;
+    var parsed;
     var val;
+
+    if (multiple) {
+        parsed = [];
+    } else {
+        parsed = {};
+    }
 
     for (arg in args) {
         kv = args[arg].split('=');
@@ -223,7 +241,13 @@ function parseKeyEqualsValue(args)
         } else {
             key = kv[0];
             val = kv.slice(1).join('=');
-            parsed[key] = val;
+            if (multiple) {
+                obj = {};
+                obj[key] = val;
+                parsed.push(obj);
+            } else {
+                parsed[key] = val;
+            }
         }
     }
 
@@ -234,32 +258,45 @@ function parseStartArgs(args)
 {
     var extra = {};
     var model;
-    var parsed;
     var p;
+    var pair;
+    var parsed;
+    var saw_order = false;
     var key;
     var val;
 
-    parsed = parseKeyEqualsValue(args);
-    for (key in parsed) {
-        val = parsed[key];
-        if (key === 'order') {
-            extra.boot = 'order=' + val;
-        } else if (key === 'disk' || key === 'cdrom') {
-            p = val.split(',')[0];
-            model = val.split(',')[1];
-            if (!model || !p || p.length === 0 || model.length === 0) {
-                usage('Parameter to ' + key + ' must be: path,model');
+    parsed = parseKeyEqualsValue(args, true);
+    for (pair in parsed) {
+        pair = parsed[pair];
+        for (key in pair) {
+            val = pair[key];
+            if (key === 'order') {
+                // only want one order option, multiple will be an error here.
+                if (saw_order) {
+                    usage('You can only specify \'order\' once when starting a '
+                        + 'VM');
+                    // NOTREACHED
+                }
+                extra.boot = 'order=' + val;
+                saw_order = true;
+            } else if (key === 'disk' || key === 'cdrom') {
+                p = val.split(',')[0];
+                model = val.split(',')[1];
+                if (!model || !p || p.length === 0 || model.length === 0) {
+                    usage('Parameter to ' + key + ' must be: path,model');
+                }
+                if (VM.DISK_MODELS.indexOf(model) === -1) {
+                    usage('Invalid model "' + model + '": model must be one '
+                        + 'of: ' + VM.DISK_MODELS.join(','));
+                }
+                if (!extra.disks) {
+                    extra.disks = [];
+                }
+                extra.disks.push({path: p, model: model, media: key});
+            } else {
+                usage('Invalid argument to start: ' + key);
+                // NOTREACHED
             }
-            if (VM.DISK_MODELS.indexOf(model) === -1) {
-                usage('Invalid model "' + model + '": model must be one of: '
-                    + VM.DISK_MODELS.join(','));
-            }
-            if (!extra.disks) {
-                extra.disks = [];
-            }
-            extra.disks.push({path: p, model: model, media: key});
-        } else {
-            usage('Invalid argument to start: ' + key);
         }
     }
 
@@ -296,15 +333,18 @@ function addCommandOptions(command, opts, shorts)
     shorts.d = ['--debug', 'true'];
 
     switch (command) {
-    case 'start':
     case 'boot':
+    case 'console':
     case 'delete':
     case 'destroy':
-    case 'info':
     case 'get':
-    case 'json':
-    case 'sysrq':
     case 'help':
+    case 'info':
+    case 'install':
+    case 'json':
+    case 'send':
+    case 'start':
+    case 'sysrq':
         // these only take uuid or 'special' args like start order=cd
         break;
     case 'lookup':
@@ -314,8 +354,9 @@ function addCommandOptions(command, opts, shorts)
         shorts['1'] = ['--unique'];
         break;
     case 'create':
+    case 'receive':
+    case 'recv':
     case 'update':
-        opts.file = path;
         shorts.f = ['--file'];
         break;
     case 'list':
@@ -330,8 +371,8 @@ function addCommandOptions(command, opts, shorts)
         shorts.H = ['--header', 'false'];
         break;
     case 'halt':
-    case 'stop':
     case 'reboot':
+    case 'stop':
         opts.force = Boolean;
         shorts.F = ['--force', 'true'];
         break;
@@ -663,6 +704,26 @@ function main(callback)
             });
         }
         break;
+    case 'install':
+        uuid = getUUID(command, parsed);
+        VM.install(uuid, function (err) {
+            if (err) {
+                callback(err);
+                return;
+            }
+            callback(null, 'Successfully installed ' + uuid);
+        });
+        break;
+    case 'recv':
+    case 'receive':
+        VM.receive('-', {}, function (e, info) {
+            if (e) {
+                callback(e);
+            } else {
+                callback(null, 'Successfully received ' + info.uuid);
+            }
+        });
+        break;
     case 'create':
         if (parsed.hasOwnProperty('file') && parsed.file !== '-') {
             filename = parsed.file;
@@ -670,19 +731,30 @@ function main(callback)
             filename = '-';
         }
         if (filename === '-' && tty.isatty(0)) {
-            usage('Will not ' + command + ' from stdin when stdin is a tty.');
+            usage('Will not create from stdin when stdin is a tty.');
         }
         readFile(filename, function (err, payload) {
             if (err) {
                 callback(err);
+                return;
+            }
+
+            VM.create(payload, function (e, info) {
+                if (e) {
+                    callback(e);
+                } else {
+                    callback(null, 'Successfully created ' + info.uuid);
+                }
+            });
+        });
+        break;
+    case 'send':
+        uuid = getUUID(command, parsed);
+        VM.send(uuid, process.stdout, {}, function (e, info) {
+            if (e) {
+                callback(e);
             } else {
-                VM.create(payload, function (e, info) {
-                    if (e) {
-                        callback(e);
-                    } else {
-                        callback(null, 'Successfully created ' + info.uuid);
-                    }
-                });
+                callback(null, 'Successfully sent ' + uuid);
             }
         });
         break;
@@ -691,6 +763,7 @@ function main(callback)
         uuid = getUUID(command, parsed);
         VM.delete(uuid, function (err) {
             if (err) {
+                err.message = 'Failed to delete ' + uuid + ': ' + err.message;
                 callback(err);
             } else {
                 callback(null, 'Successfully deleted ' + uuid);

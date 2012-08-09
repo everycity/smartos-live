@@ -1,122 +1,201 @@
-# Copyright (c) 2010-2012 Joyent Inc., All rights reserved.
+#
+# Copyright (c) 2012, Joyent, Inc.  All rights reserved.
+#
 
-ROOT=$(PWD)
-PROTO=$(ROOT)/proto
-MPROTO=$(ROOT)/manifest.d
-PATH=/opt/local/bin:/opt/local/sbin:/opt/local/gcc34/bin:/usr/xpg4/bin:/usr/bin:/usr/sbin:/usr/sfw/bin:/usr/openwin/bin:/opt/SUNWspro/bin:/usr/ccs/bin
-LOCAL_SUBDIRS:=$(shell ls projects/local)
-MANIFEST=manifest.gen
-OVERLAYS:=$(shell cat overlay/order)
-JSSTYLE=$(ROOT)/tools/jsstyle/jsstyle
-JSLINT=$(ROOT)/tools/javascriptlint/build/install/jsl
-ifeq ($(EXTRA_TARBALL),)
-EXTRA_TARBALL:=$(shell ls `pwd`/illumos-extra*.tgz 2> /dev/null | tail -n1 && echo $?)
+ROOT =		$(PWD)
+PROTO =		$(ROOT)/proto
+STRAP_PROTO =	$(ROOT)/proto.strap
+MPROTO =	$(ROOT)/manifest.d
+
+ifeq ($(shell uname -s),Darwin)
+PATH =		/bin:/usr/bin:/usr/sbin:/sbin:/opt/local/bin
+else
+PATH =		/usr/bin:/usr/sbin:/sbin:/opt/local/bin
 endif
-world: 0-illumos-stamp 0-extra-stamp 0-livesrc-stamp 0-local-stamp \
-	0-tools-stamp 0-man-stamp 0-devpro-stamp
+
+LOCAL_SUBDIRS :=	$(shell ls projects/local)
+OVERLAYS :=	$(shell cat overlay/order)
+MANIFEST =	manifest.gen
+JSSTYLE =	$(ROOT)/tools/jsstyle/jsstyle
+JSLINT =	$(ROOT)/tools/javascriptlint/build/install/jsl
+CSTYLE =	$(ROOT)/tools/cstyle
+
+ADJUNCT_TARBALL :=	$(shell ls `pwd`/illumos-adjunct*.tgz 2>/dev/null \
+	| tail -n1 && echo $?)
+
+STAMPFILE :=	$(ROOT)/proto/buildstamp
+
+WORLD_MANIFESTS := \
+	$(MPROTO)/illumos.manifest \
+	$(MPROTO)/live.manifest \
+	$(MPROTO)/illumos-extra.manifest
+
+SUBDIR_MANIFESTS :=	$(LOCAL_SUBDIRS:%=$(MPROTO)/%.sd.manifest)
+OVERLAY_MANIFESTS :=	$(OVERLAYS:$(ROOT)/overlay/%=$(MPROTO)/%.ov.manifest)
+
+world: 0-extra-stamp 0-illumos-stamp 1-extra-stamp 0-livesrc-stamp \
+	0-local-stamp 0-tools-stamp 0-man-stamp 0-devpro-stamp
 
 live: world manifest
-	(cd $(ROOT)/src_addon && gmake DESTDIR=$(PROTO) install)
+	@echo $(OVERLAY_MANIFESTS)
+	@echo $(SUBDIR_MANIFESTS)
 	mkdir -p ${ROOT}/log
-	(cd $(ROOT) && pfexec ./tools/build_live $(ROOT)/$(MANIFEST) $(ROOT)/output $(OVERLAYS) $(ROOT)/proto $(ROOT)/man/man)
+	(cd $(ROOT) && \
+	    pfexec ./tools/build_live $(ROOT)/$(MANIFEST) $(ROOT)/output \
+	    $(OVERLAYS) $(ROOT)/proto $(ROOT)/man/man)
 
-manifest:
-	rm -f $(MANIFEST) $(MPROTO)/*
-	-[ ! -d $(MPROTO) ] && mkdir $(MPROTO)
-	cp src/manifest $(MPROTO)/live.manifest
+#
+# Manifest construction.  There are 5 sources for manifests we need to collect
+# in $(MPROTO) before running the manifest tool.  One each comes from
+# illumos, illumos-extra, and the root of live (covering mainly what's in src).
+# Additional manifests come from each of $(LOCAL_SUBDIRS), which may choose
+# to construct them programmatically, and $(OVERLAYS), which must be static.
+# These all end up in $(MPROTO), where we tell tools/build_manifest to look;
+# it will pick up every file in that directory and treat it as a manifest.
+#
+# Look ma, no for loops in these shell fragments!
+#
+manifest: $(MANIFEST)
+
+$(MPROTO):
+	mkdir -p $(MPROTO)
+
+$(MPROTO)/live.manifest: $(MPROTO)
+	gmake DESTDIR=$(MPROTO) DESTNAME=live.manifest \
+	    -C src manifest
+
+$(MPROTO)/illumos.manifest: $(MPROTO) projects/illumos/manifest
 	cp projects/illumos/manifest $(MPROTO)/illumos.manifest
-ifeq ($(EXTRA_TARBALL),)
-		gmake DESTDIR=$(MPROTO) DESTNAME=illumos-extra.manifest -C projects/illumos-extra manifest
-else
-		gtar -Ozxf $(EXTRA_TARBALL) manifest > $(MPROTO)/illumos-extra.manifest
-endif
-	[ ! -d projects/local ] || for dir in $(LOCAL_SUBDIRS); do \
-	cd $(ROOT)/projects/local/$${dir}; \
-	if [[ -f Makefile.joyent ]]; then \
-	gmake DESTDIR=$(MPROTO) DESTNAME=$${dir}.manifest -f Makefile.joyent \
-	manifest; else gmake DESTDIR=$(MPROTO) DESTNAME=$${dir}.manifest manifest; fi; done
-	for dir in $(OVERLAYS); do cp $${dir}/manifest $(MPROTO)/overlay-$$(basename $${dir}).manifest; done
+
+$(MPROTO)/illumos-extra.manifest: $(MPROTO) 1-extra-stamp
+	gmake DESTDIR=$(MPROTO) DESTNAME=illumos-extra.manifest \
+	    -C projects/illumos-extra manifest; \
+
+.PHONY: $(MPROTO)/%.sd.manifest
+$(MPROTO)/%.sd.manifest:
+	cd $(ROOT)/projects/local/$* && \
+	    if [[ -f Makefile.joyent ]]; then \
+		gmake DESTDIR=$(MPROTO) DESTNAME=$*.sd.manifest \
+		    -f Makefile.joyent manifest; \
+	    else \
+		gmake DESTDIR=$(MPROTO) DESTNAME=$*.sd.manifest \
+		    manifest; \
+	    fi
+
+$(MPROTO)/%.ov.manifest: $(MPROTO) $(ROOT)/overlay/%/manifest
+	cp $(ROOT)/overlay/$*/manifest $@
+
+$(MANIFEST): $(WORLD_MANIFESTS) $(SUBDIR_MANIFESTS) $(OVERLAY_MANIFESTS)
+	-rm -f $(MANIFEST)
 	./tools/build_manifest
-	./tools/sorter manifest.gen > manifest.gen.sorted && mv manifest.gen.sorted manifest.gen
+	./tools/sorter manifest.gen > manifest.gen.sorted && \
+	    mv manifest.gen.sorted $@
 
-update:
+#
+# Update source code from parent repositories.  We do this for each local
+# project as well as for illumos, illumos-extra, and illumos-live via the
+# update_base tool.
+#
+update: update-base $(LOCAL_SUBDIRS:%=%.update)
+	-rm -f 0-local-stamp
+
+.PHONY: update-base
+update-base:
 	./tools/update_base
-	[ ! -d projects/local ] || for dir in $(LOCAL_SUBDIRS); do \
-	cd $(ROOT)/projects/local/$${dir}; \
-	if [[ -f Makefile.joyent ]]; then \
-	gmake -f Makefile.joyent update; else gmake update; fi; done
 
-0-local-stamp:
-	[ ! -d projects/local ] || for dir in $(LOCAL_SUBDIRS); do \
-	cd $(ROOT)/projects/local/$${dir}; \
-	if [[ -f Makefile.joyent ]]; then \
-		gmake -f Makefile.joyent world; else gmake world; fi; \
-	if [[ -f Makefile.joyent ]]; then \
-		gmake -f Makefile.joyent SMARTOS=true DESTDIR=$(PROTO) install; \
-	else \
-		gmake SMARTOS=true DESTDIR=$(PROTO) install; \
-	fi; \
-	done
+.PHONY: %.update
+%.update:
+	cd $(ROOT)/projects/local/$* && \
+	    if [[ -f Makefile.joyent ]]; then \
+		gmake -f Makefile.joyent update; \
+	    else \
+		gmake update; \
+	    fi
+	-rm -f 0-subdir-$*-stamp
+
+0-local-stamp: $(LOCAL_SUBDIRS:%=0-subdir-%-stamp)
+	touch $@
+
+0-subdir-%-stamp:
+	cd "$(ROOT)/projects/local/$*" && \
+	    if [[ -f Makefile.joyent ]]; then \
+		gmake -f Makefile.joyent DESTDIR=$(PROTO) world install; \
+	    else \
+		gmake DESTDIR=$(PROTO) world install; \
+	    fi
+	touch $@
 
 0-devpro-stamp:
 	[ ! -d projects/devpro ] || \
-	(cd projects/devpro && gmake DESTDIR=$(PROTO) install)
+	    (cd projects/devpro && gmake DESTDIR=$(PROTO) install)
+	touch $@
 
-0-illumos-stamp:
+0-illumos-stamp: 0-extra-stamp
 	(cd $(ROOT) && ./tools/build_illumos)
-	touch 0-illumos-stamp
+	touch $@
 
 0-extra-stamp:
-ifeq ($(EXTRA_TARBALL),)
-		(cd $(ROOT)/projects/illumos-extra && gmake DESTDIR=$(PROTO) install)
-else
-ifneq ($(NO_EXTRA_TARBALL),)
-			(cd $(ROOT)/projects/illumos-extra && gmake DESTDIR=$(PROTO) install)
-else
-			(cd $(PROTO)/../ && gtar -zxf $(EXTRA_TARBALL) proto/)
-endif
-endif
-	touch 0-extra-stamp
+	(cd $(ROOT)/projects/illumos-extra && \
+	    gmake DESTDIR=$(STRAP_PROTO) install_strap)
+	(cd $(STRAP_PROTO) && gtar xzf $(ADJUNCT_TARBALL))
+	touch $@
+
+1-extra-stamp: 0-illumos-stamp
+	(cd $(ROOT)/projects/illumos-extra && \
+	    gmake DESTDIR=$(PROTO) install)
+	touch $@
 
 0-livesrc-stamp: src/bootparams.c
-	(cd $(ROOT)/src && gmake DESTDIR=$(PROTO) && gmake DESTDIR=$(PROTO) install)
+	(cd $(ROOT)/src && \
+	    gmake DESTDIR=$(PROTO) && \
+	    gmake DESTDIR=$(PROTO) install)
+	touch $@
 
 0-man-stamp:
 	(cd $(ROOT)/man/src && gmake clean && gmake)
+	touch $@
 
 0-tools-stamp: 0-builder-stamp 0-pwgen-stamp tools/cryptpass
 	(cp ${ROOT}/tools/cryptpass $(PROTO)/usr/lib)
+	touch $@
 
 0-builder-stamp:
 	(cd $(ROOT)/tools/builder && gmake builder)
+	touch $@
 
 0-pwgen-stamp:
-	(cd ${ROOT}/tools/pwgen-* && autoconf && ./configure \
-        && make && cp pwgen ${ROOT}/tools)
+	(cd ${ROOT}/tools/pwgen-* && autoconf && ./configure && \
+	    make && cp pwgen ${ROOT}/tools)
+	touch $@
 
 tools/cryptpass: tools/cryptpass.c
 	(cd ${ROOT}/tools && gcc -Wall -W -O2 -o cryptpass cryptpass.c)
+
+jsl: $(JSLINT)
 
 $(JSLINT):
 	@(cd $(ROOT)/tools/javascriptlint; make CC=gcc install)
 
 check: $(JSLINT)
-	@$(JSLINT) --conf=$(ROOT)/tools/jsl.node.conf src/vm/sbin/*.js
-	@$(JSLINT) --conf=$(ROOT)/tools/jsl.node.conf src/vm/node_modules/{qmp,VM}.js
-	@$(JSSTYLE) -o indent=4,strict-indent=1,doxygen,unparenthesized-return=0,continuation-at-front=1,leading-right-paren-ok=1 src/vm/sbin/*.js
-	@$(JSSTYLE) -o indent=4,strict-indent=1,doxygen,unparenthesized-return=0,continuation-at-front=1,leading-right-paren-ok=1 src/vm/node_modules/{qmp,VM}.js
+	@(cd $(ROOT)/src && make check)
 
 clean:
 	rm -f $(MANIFEST)
 	rm -rf $(ROOT)/$(MPROTO)/*
 	(cd $(ROOT)/src && gmake clean)
-	[ ! -d $(ROOT)/projects/illumos-extra ] || (cd $(ROOT)/projects/illumos-extra && gmake clean)
+	[ ! -d $(ROOT)/projects/illumos-extra ] || \
+	    (cd $(ROOT)/projects/illumos-extra && gmake clean)
 	[ ! -d projects/local ] || for dir in $(LOCAL_SUBDIRS); do \
-	cd $(ROOT)/projects/local/$${dir}; \
-	if [[ -f Makefile.joyent ]]; then \
-	gmake -f Makefile.joyent clean; else gmake clean; fi; done
+		cd $(ROOT)/projects/local/$${dir} && \
+		if [[ -f Makefile.joyent ]]; then \
+			gmake -f Makefile.joyent clean; \
+		else \
+			gmake clean; \
+		fi; \
+	done
 	(cd $(ROOT) && rm -rf $(PROTO))
-	(cd $(ROOT) && mkdir -p $(PROTO))
-	rm -f 0-*-stamp
+	(cd $(ROOT) && rm -rf $(STRAP_PROTO))
+	(cd $(ROOT) && mkdir -p $(PROTO) $(STRAP_PROTO))
+	rm -f 0-*-stamp 1-*-stamp
 
-.PHONY: manifest check
+.PHONY: manifest check jsl

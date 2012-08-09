@@ -6,10 +6,10 @@ vmadm(1m) -- Manage SmartOS virtual machines
 
 ## DESCRIPTION
 
-The vmadm tool allows you to interact with virtual machines on a SmartOS system.
-Both OS Virtual Machines (zones) and KVM Virtual Machines can be managed. vmadm
-allows you to create, inspect, modify and delete virtual machines on the local
-system.
+The vmadm tool allows you to interact with virtual machines on a SmartOS
+system. Both OS Virtual Machines (zones) and KVM Virtual Machines can be
+managed. vmadm allows you to create, inspect, modify and delete virtual
+machines on the local system.
 
 The primary reference for a VM is its UUID. Most commands operate on VMs by
 UUID. In SmartOS, there are included bash tab-completion rules so that you can
@@ -39,15 +39,16 @@ tab-complete UUIDs rather than having to type them out for every command.
 
         To end the serial console session hit CTRL-]. For OS VMs, you'll need
         to do this at the start of a line, so generally this means pressing:
-        ENTER then CTRL-] then a dot character. For KVM VMs you should just need
-        to press CTRL-] by itself.
+        ENTER then CTRL-] then a dot character. For KVM VMs you should just
+        need to press CTRL-] by itself.
 
       delete <uuid>
 
-        Delete the VM with the specified UUID. The VM and any associated storage
-        including zvols and the zone filesystem will be removed.
+        Delete the VM with the specified UUID. The VM and any associated
+        storage including zvols and the zone filesystem will be removed.
 
-        Note: this command is not interactive, take care to delete the right VM.
+        Note: this command is not interactive, take care to delete the right
+        VM.
 
       get <uuid>
 
@@ -77,7 +78,8 @@ tab-complete UUIDs rather than having to type them out for every command.
             write offset for each block device.
 
         chardev:
-            Information about the special character devices attached to this VM.
+            Information about the special character devices attached to this
+            VM.
 
         cpus:
             Information about the virtual CPUs attached to this VM.
@@ -89,33 +91,38 @@ tab-complete UUIDs rather than having to type them out for every command.
             Information about each device on the virtual PCI bus attached to
             this VM.
 
+        spice:
+            The IP, port and VNC display number for the TCP socket we're
+            listening on for this VM. If spice is enabled.
+
         version:
             Qemu version information.
 
         vnc:
             The IP, port and VNC display number for the TCP socket we're
-            listening on for this VM.
+            listening on for this VM. If VNC is enabled.
+
 
       list [-p] [-H] [-o field,...] [-s field,...] [field=value ...]
 
         The list command can list the VMs on a system in a variety of ways. The
         filters, order and sort options are all based on the properties of VMs.
-        See the PROPERTIES section below for the list of keys allowed. All those
-        listed there as 'listable' can be used as keys for filtering, sorting or
-        ordering.
+        See the PROPERTIES section below for the list of keys allowed. All
+        those listed there as 'listable' can be used as keys for filtering,
+        sorting or ordering.
 
         The list command always operates on a set of VMs which is limited by a
         filter. By default the filter is empty so all VMs are listed. You add
-        filters by specifying key=value pairs on the cmdline. You can also match
-        filters by regular expression by using key=~value and making value be a
-        regular expression.  You can add as many filters as you want and only
-        VMs that match all the filter parameters will be shown.
+        filters by specifying key=value pairs on the cmdline. You can also
+        match filters by regular expression by using key=~value and making
+        value be a regular expression.  You can add as many filters as you want
+        and only VMs that match all the filter parameters will be shown.
 
         The fields output are controlled with the -o option which specifies the
-        order.  The default order is 'uuid,type,ram,state,alias'. If you specify
-        your own order with the -o option, this order is replaced so any fields
-        from the default you want to keep in your output you'll have to add them
-        to your list of fields.
+        order.  The default order is 'uuid,type,ram,state,alias'. If you
+        specify your own order with the -o option, this order is replaced so
+        any fields from the default you want to keep in your output you'll have
+        to add them to your list of fields.
 
         The order of the rows in the output is controlled through the -s option
         which determines the sort order. The default sort order is 'ram,uuid'
@@ -153,16 +160,16 @@ tab-complete UUIDs rather than having to type them out for every command.
             done
 
         based on the output. If you want to use the output as JSON, you can add
-        the -j parameter. With that flag set, the output will be a JSON array of
-        VM objects containing the same JSON data as the 'get' command for each
-        VM matched.
+        the -j parameter. With that flag set, the output will be a JSON array
+        of VM objects containing the same JSON data as the 'get' command for
+        each VM matched.
 
         If you pass the -1 parameter, lookup should only return 1 result. If
         multiple results are matched or 0 results are matched, an error will
         be returned and the exit status will be non-zero.
 
-        See the PROPERTIES section below for the list of keys allowed. All those
-        listed there as 'listable' can be used as keys for filtering.
+        See the PROPERTIES section below for the list of keys allowed. All
+        those listed there as 'listable' can be used as keys for filtering.
 
       reboot <uuid> [-F]
 
@@ -175,13 +182,13 @@ tab-complete UUIDs rather than having to type them out for every command.
         cmdline '/usr/sbin/shutdown -y -g 0 -i 6' which will cause the VM to
         reboot after shutting down.
 
-        For KVM VMs, vmadmd will act as a helper here for the reboot in the same
-        manner as described below for the 'stop' command.
+        For KVM VMs, vmadmd will act as a helper here for the reboot in the
+        same manner as described below for the 'stop' command.
 
-        If for some reason you are unable or do not want to do a graceful reboot
-        you can add the '-F' parameter to do a forced reboot. This reboot will
-        be much faster but will not necessarily give the VM any time to shut
-        down its processes.
+        If for some reason you are unable or do not want to do a graceful
+        reboot you can add the '-F' parameter to do a forced reboot. This
+        reboot will be much faster but will not necessarily give the VM any
+        time to shut down its processes.
 
       start <uuid> [option=value ...]
 
@@ -204,28 +211,36 @@ tab-complete UUIDs rather than having to type them out for every command.
             ,once=d to boot off an ISO image once and then after the install
             is complete you will boot on the hard drive.
 
+            The order= option can only be specified once per boot.
+
           cdrom=/path/to/image.iso,[ide|scsi|virtio]
 
-            This option lets you add a virtual CD-ROM disk to a VM for this boot
-            only. The path specified is evaluated within the zoneroot of the VM
-            so /image.iso will actually be something like the path
+            This option lets you add a virtual CD-ROM disk to a VM for this
+            boot only. The path specified is evaluated within the zoneroot of
+            the VM so /image.iso will actually be something like the path
             /zones/<uuid>/root/image.iso from the global zone.
 
             The second part of this parameter (after the comma) indicates which
             model the CD-ROM drive should be. You should choose ide in most
             cases.
 
+            You can specify multiple cdrom options when booting a VM. They will
+            be attached in the order they appear on the cmdline.
+
           disk=/path/to/disk,[ide|scsi|virtio]
 
             This option lets you add an additional disk to a VM for this boot
-            only.  The path specified is evaluated within the zoneroot of the VM
-            so /raw.img will actually be something like the path
+            only.  The path specified is evaluated within the zoneroot of the
+            VM so /raw.img will actually be something like the path
             /zones/<uuid>/root/raw.img from the global zone.
 
             The second part of this parameter (after the comma) indicates which
-            model the virtual drive should be. You should choose virtio when you
-            know that the VM supports it, and ide or scsi otherwise depending on
-            the drivers supported in the guest.
+            model the virtual drive should be. You should choose virtio when
+            you know that the VM supports it, and ide or scsi otherwise
+            depending on the drivers supported in the guest.
+
+            You can specify multiple disk options when booting a VM. They will
+            be attached in the order they appear on the cmdline.
 
       stop <uuid> [-F]
 
@@ -313,11 +328,12 @@ tab-complete UUIDs rather than having to type them out for every command.
         For NICs for example, you can include an array of NIC objects with the
         parameter add_nics in your input. Those NICs would get added to the VM.
         For update you also pass in a new NIC object but only need to specify
-        the "mac" parameter (to identify which NIC to update) and the properties
-        that you want to change. If you need to change the MAC address itself,
-        you'll need to add a new NIC with the same properties and a different
-        MAC, and remove the existing one. To remove a NIC, the remove_nics
-        property should be an array of MAC addresses only (not NIC objects).
+        the "mac" parameter (to identify which NIC to update) and the
+        properties that you want to change. If you need to change the MAC
+        address itself, you'll need to add a new NIC with the same properties
+        and a different MAC, and remove the existing one. To remove a NIC, the
+        remove_nics property should be an array of MAC addresses only (not NIC
+        objects).
 
         For updating disks, you use the same format as described above for NICs
         except that the options are add_disks, remove_disks and update_disks
@@ -334,8 +350,8 @@ tab-complete UUIDs rather than having to type them out for every command.
     Every VM has a number of properties. The properties for a VM can be listed
     with the 'vmadm get <uuid>' command. Some of these properties can be
     included in a create payload, some can be included in the output or be used
-    to sort output for the 'vmadm list' command. Not all fields will be included
-    for all VMs. Below the fields are marked as:
+    to sort output for the 'vmadm list' command. Not all fields will be
+    included for all VMs. Below the fields are marked as:
 
         type -- type of the properties value.
 
@@ -369,8 +385,8 @@ tab-complete UUIDs rather than having to type them out for every command.
 
     autoboot:
 
-        Controls whether or not a VM is booted when the system is rebooted. This
-        property can be set with the initial create but any time the VM is
+        Controls whether or not a VM is booted when the system is rebooted.
+        This property can be set with the initial create but any time the VM is
         started this will also get set true and when the VM is stopped it will
         get set false. This is to ensure that the compute node will always
         reboot into the intended state.
@@ -391,7 +407,7 @@ tab-complete UUIDs rather than having to type them out for every command.
         listable: yes
         create: yes
         update: yes
-        default: dataset_uuid if provided, otherwise 00000000-0000-0000-0000-000000000000
+        default: 00000000-0000-0000-0000-000000000000
 
     boot:
 
@@ -408,10 +424,11 @@ tab-complete UUIDs rather than having to type them out for every command.
 
     brand:
 
-        This will be one of 'joyent' for OS virtualization and 'kvm' for full
-        hardware virtualization. This is a required value for VM creation.
+        This will be one of 'joyent' or 'joyent-minimal' for OS virtualization
+        and 'kvm' for full hardware virtualization. This is a required value
+        for VM creation.
 
-        type: string (joyent|kvm)
+        type: string (joyent|joyent-minimal|kvm)
         vmtype: OS,KVM
         listable: yes
         create: yes
@@ -434,8 +451,8 @@ tab-complete UUIDs rather than having to type them out for every command.
         Sets a limit on the number of fair share scheduler (FSS) CPU shares for
         a VM. This value is relative to all other VMs on the system, so a value
         only has meaning in relation to other VMs. If you have one VM with a
-        a value 10 and another with a value of 50, the VM with 50 will get 5x as
-        much time from the scheduler as the one with 10 when there is
+        a value 10 and another with a value of 50, the VM with 50 will get 5x
+        as much time from the scheduler as the one with 10 when there is
         contention.
 
         type: integer (number of shares)
@@ -469,7 +486,7 @@ tab-complete UUIDs rather than having to type them out for every command.
         update: no
         default: always set to current time at VM.create().
 
-    compute_node_uuid:
+    server_uuid:
 
         This is the UUID of the compute node on which the VM currently exists.
         It is most useful when pulled from sources external to the GZ (whether
@@ -494,15 +511,20 @@ tab-complete UUIDs rather than having to type them out for every command.
         update: yes (but see special notes on update command)
         default: {}
 
-    dataset_uuid:
+    image_uuid:
 
         This should be a UUID identifying the image for the VM if a VM was
         created from an image.
 
+        NOTE: when this is passed for KVM VMs, it specifies the *zone root*
+        dataset which is not visible from within the VM. The user-visible
+        dataset will be the one specified through the disks.*.image_uuid.
+        Normally you do *not* want to set this for KVM.
+
         type: string (UUID)
         vmtype: OS,KVM
         listable: yes
-        create: yes (if passed, this sets the default for the billing_id option)
+        create: yes
         update: no
 
     datasets:
@@ -546,6 +568,23 @@ tab-complete UUIDs rather than having to type them out for every command.
           disks.*.size   # for lookup matching any disk
           disks.0.size   # for list output or lookup of a specific disk
 
+    disks.*.block_size:
+
+        Specifies the block size for the disk. This property can only be set at
+        disk creation time and cannot be changed without destroying the disk
+        and creating a new one.
+
+        Important: this property cannot be set on disks that have an image_uuid
+        parameter as the image being cloned will already have the ZFS
+        volblocksize property set.
+
+        type: integer (block size in bytes, 512 to 131072, must be power of 2)
+        vmtype: KVM
+        listable: no
+        create: yes
+        update: no (except when adding new disks)
+        default: 8192
+
     disks.*.boot:
 
         Specifies whether this disk should be bootable (only one disk should).
@@ -556,6 +595,20 @@ tab-complete UUIDs rather than having to type them out for every command.
         create: yes
         update: yes (special, see description in 'update' section above)
         default: no
+
+    disks.*.nocreate:
+
+        This parameter indicates whether or not the disk should be created. It
+        only makes sense for disks with media type 'disk'. For media type
+        'cdrom' the device is not created. It also can only be set when
+        creating a disk.
+
+        type: boolean
+        vmtype: KVM
+        listable: no
+        create: yes
+        update: no (except when adding new disks)
+        default: false (new zvol is created when media type is 'disk')
 
     disks.*.image_name:
 
@@ -629,6 +682,21 @@ tab-complete UUIDs rather than having to type them out for every command.
         update: yes (special, see description in 'update' section above)
         default: the value of the disk_driver parameter for this VM
 
+    disks.*.compression:
+
+        Specifies a compression algorithm used for this disk. This has the same
+        details, warnings and caveats as the global zfs_root_compression option
+        below but only affects a single disk on the VM.
+
+        See zfs_root_compression section below for more details.
+
+        type: string one of: "on,off,lzjb,gzip,gzip-N,zle"
+        vmtype: KVM
+        listable: no
+        create: yes
+        update: yes (see caveat in zfs_root_compression section below)
+        default: off
+
     disks.*.zpool:
 
         The zpool in which to create this zvol.
@@ -642,8 +710,8 @@ tab-complete UUIDs rather than having to type them out for every command.
 
     disk_driver:
 
-        This specifies the default values for disks.*.model for disks attached to
-        this VM.
+        This specifies the default values for disks.*.model for disks attached
+        to this VM.
 
         type: string (one of ['virtio','ide','scsi'])
         vmtype: KVM
@@ -681,10 +749,11 @@ tab-complete UUIDs rather than having to type them out for every command.
 
     filesystems:
 
-        This property can be used to mount additional filesystems into an OS VM.
-        It is primarily intended for SDC special VMs.  The value is an array of
-        objects. Those objects can have the following properties: source, target,
-        raw (optional), type and options.  These are described below:
+        This property can be used to mount additional filesystems into an OS
+        VM. It is primarily intended for SDC special VMs.  The value is an
+        array of objects. Those objects can have the following properties:
+        source, target, raw (optional), type and options.  These are described
+        below:
 
     filesystem.type:
 
@@ -732,9 +801,9 @@ tab-complete UUIDs rather than having to type them out for every command.
 
     filesystem.options:
 
-        For OS VMs this specifies the array of mount options for this filesystem
-        when it is mounted into the zone.  Examples of options include: "ro" and
-        "nodevices".
+        For OS VMs this specifies the array of mount options for this file
+        system when it is mounted into the zone.  Examples of options include:
+        "ro" and "nodevices".
 
         type: array of strings (each string is an option)
         vmtype: OS
@@ -746,8 +815,8 @@ tab-complete UUIDs rather than having to type them out for every command.
 
         This option allows you to specify filesystem types this zone is allowed
         to mount.  For example on a zone for building SmartOS you probably want
-        to set this to: "ufs,pcfs,tmpfs".  To unset this property, set the value
-        to the empty string.
+        to set this to: "ufs,pcfs,tmpfs".  To unset this property, set the
+        value to the empty string.
 
         type: string (comma separated list of filesystem types)
         vmtype: OS
@@ -758,8 +827,8 @@ tab-complete UUIDs rather than having to type them out for every command.
     hostname:
 
         For KVM VMs, this value will be handed out via DHCP as the hostname for
-        the VM. For OS VMs, this value will get set in several files at creation
-        time, but changing it later will do nothing.
+        the VM. For OS VMs, this value will get set in several files at
+        creation time, but changing it later will do nothing.
 
         type: string (hostname)
         vmtype: OS,KVM
@@ -792,12 +861,13 @@ tab-complete UUIDs rather than having to type them out for every command.
         listable: no
         create: yes
         update: yes
-        default: default,dtrace_proc,dtrace_user
+        OS default: "default"
+        KVM default: "default,-file_link_any,-net_access,-proc_fork,-proc_info,-proc_session"
 
     max_locked_memory:
 
         The total amount of physical memory in the host than can be locked for
-        this VM.
+        this VM. This value cannot be higher than max_physical_memory.
 
         type: integer (number of MiB)
         vmtype: OS,KVM
@@ -821,6 +891,8 @@ tab-complete UUIDs rather than having to type them out for every command.
     max_physical_memory:
 
         The maximum amount of memory on the host that the VM is allowed to use.
+        For KVM VMs, this value cannot be lower than 'ram' and should be
+        ram + 1024.
 
         type: integer (number of MiB)
         vmtype: OS,KVM
@@ -831,7 +903,8 @@ tab-complete UUIDs rather than having to type them out for every command.
 
     max_swap:
 
-        The maximum amount of virtual memory the VM is allowed to use.
+        The maximum amount of virtual memory the VM is allowed to use.  This
+        cannot be lower than max_physical_memory.
 
         type: integer (number of MiB)
         vmtype: OS,KVM
@@ -848,13 +921,79 @@ tab-complete UUIDs rather than having to type them out for every command.
         update nics, see the special notes in the section above about the
         'upgrade' command.
 
-        When adding or removing NICs, the NIC names will be created in the order
-        the interfaces are in the nics or add_nics array.
+        When adding or removing NICs, the NIC names will be created in the
+        order the interfaces are in the nics or add_nics array.
 
         To use these properties in a list output or lookup, use the format:
 
           nics.*.ip   # for lookup matching any interface
           nics.0.ip   # for list output or lookup of a specific interface
+
+    nics.*.allow_dhcp_spoofing:
+
+        With this property set to true, this VM will be able to operate as a
+        DHCP server on this interface.  Without this, some of the packets
+        required of a DHCP server will not get through.
+
+        type: boolean
+        vmtype: OS,KVM
+        listable: yes (see above)
+        create: yes
+        update: yes
+        default: false
+
+    nics.*.allow_ip_spoofing:
+
+        With this property set to true, this VM will be able to send and
+        receive packets over this nic that don't match the IP address
+        specified by the ip property.
+
+        type: boolean
+        vmtype: OS,KVM
+        listable: yes (see above)
+        create: yes
+        update: yes
+        default: false
+
+    nics.*.allow_mac_spoofing:
+
+        With this property set to true, this VM will be able to send packets
+        from this nic with MAC addresses that don't match the mac property.
+
+        type: boolean
+        vmtype: OS,KVM
+        listable: yes (see above)
+        create: yes
+        update: yes
+        default: false
+
+    nics.*.allow_restricted_traffic:
+
+        With this property set to true, this VM will be able to send
+        restricted network traffic (packets that are not IPv4, IPv6, or ARP)
+        from this nic.
+
+        type: boolean
+        vmtype: OS,KVM
+        listable: yes (see above)
+        create: yes
+        update: yes
+        default: false
+
+    nics.*.allow_unfiltered_promisc:
+
+        With this property set to true, this VM will be able to have multiple
+        MAC addresses (eg. running SmartOS with VNICs).  Without this option
+        these packets will not be picked up as only those unicast packets
+        destined for the VNIC's MAC will get through.  Warning: do not enable
+        this option unless you fully understand the security implications.
+
+        type: boolean
+        vmtype: KVM
+        listable: yes (see above)
+        create: yes
+        update: yes
+        default: false
 
     nics.*.blocked_outgoing_ports:
 
@@ -902,7 +1041,8 @@ tab-complete UUIDs rather than having to type them out for every command.
 
     nics.*.ip:
 
-        IPv4 unicast address for this NIC, or 'dhcp' to obtain address via DHCP.
+        IPv4 unicast address for this NIC, or 'dhcp' to obtain address via
+        DHCP.
 
         type: string (IPv4 address or 'dhcp')
         vmtype: OS,KVM
@@ -923,10 +1063,10 @@ tab-complete UUIDs rather than having to type them out for every command.
 
     nics.*.model:
 
-        The driver for this NIC [virtio|e1000|rtl8136|...]
+        The driver for this NIC [virtio|e1000|rtl8139|...]
 
-        type: string (one of ['virtio','e1000','rtl8136'])
-        vmtype: OS,KVM
+        type: string (one of ['virtio','e1000','rtl8139'])
+        vmtype: KVM
         listable: yes (see above)
         create: yes
         update: yes
@@ -954,6 +1094,20 @@ tab-complete UUIDs rather than having to type them out for every command.
         create: yes
         update yes (requires zone stop/boot)
 
+    nics.*.primary
+
+        This option selects which NIC's default gateway and nameserver values
+        will be used for this VM. If a VM has any nics, there must always be
+        exactly one primary.  Setting a new primary will unset the old. Trying
+        to set two nics to primary is an error.
+
+        type: boolean (only true is valid)
+        vmtype: OS,KVM
+        listable: yes (see above)
+        create: yes
+        update: yes (setting primary=true on one NIC removes the flag from the
+            current primary, and sets on the new)
+
     nics.*.vlan_id:
 
         The vlan with which to tag this NIC's traffic (0 = none).
@@ -970,7 +1124,7 @@ tab-complete UUIDs rather than having to type them out for every command.
         This specifies the default values for nics.*.model for NICs attached to
         this VM.
 
-        type: string (one of ['virtio','e1000','rtl8136'])
+        type: string (one of ['virtio','e1000','rtl8139'])
         vmtype: KVM
         listable: no
         create: yes
@@ -1004,8 +1158,8 @@ tab-complete UUIDs rather than having to type them out for every command.
 
     package_name:
 
-        This is a private field intended for use by Joyent's SDC product.  Other
-        users can ignore this field.
+        This is a private field intended for use by Joyent's SDC product.
+        Other users can ignore this field.
 
         type: string
         vmtype: OS,KVM
@@ -1015,8 +1169,8 @@ tab-complete UUIDs rather than having to type them out for every command.
 
     package_version:
 
-        This is a private field intended for use by Joyent's SDC product.  Other
-        users can ignore this field.
+        This is a private field intended for use by Joyent's SDC product.
+        Other users can ignore this field.
 
         type: string
         vmtype: OS,KVM
@@ -1041,14 +1195,19 @@ tab-complete UUIDs rather than having to type them out for every command.
         to the hypervisor. This is primarily designed to be used for debugging
         and should not be used beyond that. important: this replaces *all* of
         the options listed, so you need to include those from the default list
-        that you want to keep.
+        that you want to keep. NOTE: setting this also overrides any SPICE
+        options you might have set.
 
         type: string (space-separated options for qemu)
         vmtype: KVM
         listable: no
         create: yes
         update: yes
-        default: '-vnc unix:/tmp/vm.vnc -parallel none -usb -usbdevice tablet -k en-us -vga cirrus'
+        default:
+            if vnc_password.length != 0:
+                '-vnc unix:/tmp/vm.vnc,password -parallel none -usb -usbdevice tablet -k en-us'
+            else
+                '-vnc unix:/tmp/vm.vnc -parallel none -usb -usbdevice tablet -k en-us'
 
     qemu_extra_opts:
 
@@ -1069,6 +1228,8 @@ tab-complete UUIDs rather than having to type them out for every command.
         the quota for the Zone containing the VM, which is not directly
         available to users.
 
+        Set quota to 0 to disable (ie. for no quota).
+
         type: integer (number of GiB)
         vmtype: OS,KVM
         listable: yes
@@ -1088,26 +1249,41 @@ tab-complete UUIDs rather than having to type them out for every command.
         update: KVM VMs only, for OS VMs update max_physical_memory instead.
         default: 256
 
-    vga:
+    resolvers:
 
-        This property allows one to specify the VGA emulation to be used by
-        KVM VMs. The default is 'cirrus'. NOTE: with the Qemu bundled in SmartOS
-        qxl and xenfb do not work.
+        For OS VMs, this value sets the initial resolvers which get put into
+        the config files on first boot. For KVM VMs these will get passed as
+        the resolvers with DHCP responses.
 
-        type: string (one of: 'cirrus','std','vmware','qxl','xenfb')
+        type: array
+        vmtype: OS,KVM
+        listable: no
+        create: yes
+        update: yes (but unused after create for OS VMs)
+
+    spice_opts (EXPERIMENTAL):
+
+        This property allows you to add additional -spice options when you are
+        using SPICE. NOTE: SPICE support requires your KVM zone to be using a
+        zone dataset with the image_uuid option and that image must know what
+        to do with these special options.
+
+        type: string (-spice XXX options)
         vmtype: KVM
         listable: no
         create: yes
         update: yes
-        default: 'cirrus'
+        default: <unset>
 
-    vnc_password:
+    spice_password (EXPERIMENTAL):
 
         This property allows you to set a password which will be required when
-        connecting to the VNC port. IMPORTANT: this password will be visible
-        from the GZ of the CN and anyone with access to the serial port in the
-        guest. Set to an empty string (default) to not require a password at
-        this level.
+        connecting to the SPICE port when SPICE is enabled. NOTE: SPICE support
+        requires your KVM zone to be using a zone root dataset with the
+        image_uuid option and that dataset must know what to do with these
+        special options. IMPORTANT: this password will be visible from the GZ
+        of the CN and anyone with access to the serial port in the guest. Set
+        to an empty string (default) to not require a password at this level.
 
         type: string (8 chars max)
         vmtype: KVM
@@ -1116,42 +1292,21 @@ tab-complete UUIDs rather than having to type them out for every command.
         update: yes
         default: <unset>
 
-    vnc_port:
+    spice_port (EXPERIMENTAL):
 
-        This specifies the TCP port to listen on for the VNC server, the default
-        is zero which means a port will be chosen at random. Set to -1 to
-        disable TCP listening.
+        This specifies the TCP port to listen on for the SPICE server. By
+        default SPICE is not enabled. NOTE: SPICE support requires your KVM
+        zone to be using a zone root dataset with the image_uuid option and
+        that dataset must know what to do with these special options. If set to
+        zero, a port will be chosen at random. Set to -1 to disable TCP
+        listening for SPICE.
 
         type: integer (0 for random, -1 for disabled)
         vmtype: KVM
         listable: no
         create: yes
         update: yes
-        default: 0
-
-    zone_state:
-
-        This property will show up when fetching a VMs JSON.  this shows the
-        state of the zone in which this VM is contained. eg. 'running'.  It
-        can be different from the 'state' value in several cases.
-
-        type: string
-        vmtype: KVM
-        listable: yes
-        create: no
-        update: no
-
-    resolvers:
-
-        For OS VMs, this value sets the initial resolvers which get put into the
-        config files on first boot. For KVM VMs these will get passed as the
-        resolvers with DHCP responses.
-
-        type: array
-        vmtype: OS,KVM
-        listable: no
-        create: yes
-        update: yes (but unused after create for OS VMs)
+        default: <unset>
 
     state:
 
@@ -1177,11 +1332,12 @@ tab-complete UUIDs rather than having to type them out for every command.
 
     transition_expire:
 
-        When a KVM VM is in transition from running to either 'off' (in the case
-        of stop) or 'start' (in the case of reboot), the transition_expire field
-        will be set. This value will indicate the time at which the current
-        transaction will time out. When the transaction has timed out, vmadmd
-        will force the VM into the correct state and remove the transition.
+        When a KVM VM is in transition from running to either 'off' (in the
+        case of stop) or 'start' (in the case of reboot), the transition_expire
+        field will be set. This value will indicate the time at which the
+        current transaction will time out. When the transaction has timed out,
+        vmadmd will force the VM into the correct state and remove the
+        transition.
 
         type: integer (unix epoch timestamp)
         vmtype: KVM
@@ -1191,9 +1347,9 @@ tab-complete UUIDs rather than having to type them out for every command.
 
     transition_to:
 
-        When a KVM VM is in transition from running to either 'off' (in the case
-        of stop) or 'start' (in the case of reboot), the transition_to field
-        will be set to indicate which state the VM is transitioning to.
+        When a KVM VM is in transition from running to either 'off' (in the
+        case of stop) or 'start' (in the case of reboot), the transition_to
+        field will be set to indicate which state the VM is transitioning to.
 
         type: string value, one of: ['stopped', 'start']
         vmtype: KVM
@@ -1204,7 +1360,7 @@ tab-complete UUIDs rather than having to type them out for every command.
     type:
 
         This is a virtual field and cannot be updated. It will be 'OS' when the
-        brand=='joyent' and 'KVM' when the brand=='kvm'.
+        brand=='joyent*' and 'KVM' when the brand=='kvm'.
 
         type: string value, one of: ['OS', 'KVM']
         vmtype: OS,KVM
@@ -1237,6 +1393,104 @@ tab-complete UUIDs rather than having to type them out for every command.
         update: KVM only (requires VM reboot to take effect)
         default: 1
 
+    vga:
+
+        This property allows one to specify the VGA emulation to be used by
+        KVM VMs. The default is 'cirrus'. NOTE: with the Qemu bundled in
+        SmartOS qxl and xenfb do not work.
+
+        type: string (one of: 'cirrus','std','vmware','qxl','xenfb')
+        vmtype: KVM
+        listable: no
+        create: yes
+        update: yes
+        default: 'cirrus'
+
+    virtio_txburst:
+
+        This controls how many packets can be sent on a single flush of the tx
+        queue. This applies to all the vnics attached to this VM using the
+        virtio model.
+
+        type: integer
+        vmtype: KVM
+        listable: no
+        create: yes
+        update: yes
+        default: 128
+
+    virtio_txtimer:
+
+        This sets the timeout for the TX timer.  It applies to all the vnics
+        attached to this VM using the virtio model.
+
+        type: integer (in nanoseconds)
+        vmtype: KVM
+        listable: no
+        create: yes
+        update: yes
+        default: 200000
+
+    vnc_password:
+
+        This property allows you to set a password which will be required when
+        connecting to the VNC port. IMPORTANT: this password will be visible
+        from the GZ of the CN and anyone with access to the serial port in the
+        guest. Set to an empty string (default) to not require a password at
+        this level.
+
+        type: string (8 chars max)
+        vmtype: KVM
+        listable: no
+        create: yes
+        update: yes
+        default: <unset>
+
+    vnc_port:
+
+        This specifies the TCP port to listen on for the VNC server, the
+        default is zero which means a port will be chosen at random. Set to -1
+        to disable TCP listening.
+
+        type: integer (0 for random, -1 for disabled)
+        vmtype: KVM
+        listable: no
+        create: yes
+        update: yes
+        default: 0
+
+    zfs_data_compression:
+
+        Specifies a compression algorithm used for this VM's data dataset. This
+        option affects only the delegated dataset and therefore only makes
+        sense when the VM has been created with the delegate_dataset option.
+
+        The caveats and warnings in the zfs_root_compression section below also
+        apply to this option.
+
+        type: string one of: "on,off,lzjb,gzip,gzip-N,zle"
+        vmtype: OS
+        listable: no
+        create: yes
+        update: yes (see warning in zfs_root_compression section)
+        default: off
+
+    zfs_data_recsize:
+
+        This specifies the suggested block size for files in the delegated
+        dataset's filesystem. It can only be set when your zone has a data
+        dataset as added by the delegate_dataset option.
+
+        The warnings and caveats for zfs_root_recsize also apply to this
+        option. You should read and understand those before using this.
+
+        type: integer (record size in bytes, 512 to 131072, must be power of 2)
+        vmtype: OS (and only with a delegated dataset)
+        listable: no
+        create: yes
+        update: yes (see caveat below under zfs_root_recsize)
+        default: 131072 (128k)
+
     zfs_io_priority:
 
         This sets an IO throttle priority value relative to other VMs. If one
@@ -1251,18 +1505,62 @@ tab-complete UUIDs rather than having to type them out for every command.
         update: yes (live update)
         default: 100
 
-    zfs_storage_pool_name:
+    zfs_root_compression:
 
-        This defines which ZFS pool the VM's zone dataset will be created in
-        For OS VMs, this dataset is where all the data in the zone will live.
-        For KVM VMs, this is only used by the zone shell that the VM runs in.
+        Specifies a compression algorithm used for this VM's root dataset. This
+        option affects only the zoneroot dataset. Setting to 'on' is equivalent
+        to setting to 'lzjb'. If you want more information about the specific
+        compression types, see the man page for zfs(1m).
 
-        type: string (zpool name)
-        vmtype: OS,KVM
-        listable: yes
+        WARNING: If you change this value for an existing VM, only *new* data
+        will be compressed. It will not rewrite existing data compress.
+
+        NOTE: to change this property for KVM, see disks.*.zfs_compression
+        above.
+
+        type: string one of: "on,off,lzjb,gzip,gzip-N,zle"
+        vmtype: OS
+        listable: no
         create: yes
+        update: yes (see warning above)
+        default: off
+
+    zfs_root_recsize:
+
+        Specifies a suggested block size for files in the root file system.
+        This property is designed solely for use with database workloads that
+        access files in fixed-size records. ZFS automatically tunes block sizes
+        according to internal algorithms optimized for typical access patterns.
+        If you have a delegated dataset (with the delegate_dataset option) you
+        should consider leaving this unset and setting zfs_data_recsize
+        instead.
+
+        WARNING: Use this property only if you know exactly what you're doing
+        as it is very possible to have an adverse effect performance when
+        setting this incorrectly. Also, when doing an update, keep in mind that
+        changing the file system's recordsize affects only files created
+        after the setting is changed; existing files are unaffected.
+
+        NOTE: to change this property for KVM, see disks.*.zfs_recsize above.
+
+        type: integer (record size in bytes, 512 to 131072, must be power of 2)
+        vmtype: OS
+        listable: no
+        create: yes
+        update: yes (see caveat above)
+        default: 131072 (128k)
+
+    zone_state:
+
+        This property will show up when fetching a VMs JSON.  this shows the
+        state of the zone in which this VM is contained. eg. 'running'.  It
+        can be different from the 'state' value in several cases.
+
+        type: string
+        vmtype: KVM
+        listable: yes
+        create: no
         update: no
-        default: zones
 
     zonepath:
 
@@ -1292,16 +1590,29 @@ tab-complete UUIDs rather than having to type them out for every command.
 
     zoneid:
 
-        This property will show up in a JSON payload and can be included in list
-        output. It is however a value that is used internally to the system and
-        primarily exists to aid debugging. This value will change whenever the
-        VM is stopped or started. Do not rely on this value.
+        This property will show up in a JSON payload and can be included in
+        list output. It is however a value that is used internally to the
+        system and primarily exists to aid debugging. This value will change
+        whenever the VM is stopped or started. Do not rely on this value.
 
         type: integer
         vmtype: OS,KVM
         listable: yes
         create: no
         update: no
+
+    zpool:
+
+        This defines which ZFS pool the VM's zone dataset will be created in
+        For OS VMs, this dataset is where all the data in the zone will live.
+        For KVM VMs, this is only used by the zone shell that the VM runs in.
+
+        type: string (zpool name)
+        vmtype: OS,KVM
+        listable: yes
+        create: yes
+        update: no
+        default: zones
 
 
 ## EXAMPLES
@@ -1319,7 +1630,7 @@ tab-complete UUIDs rather than having to type them out for every command.
           "brand": "joyent",
           "zfs_io_priority": 30,
           "quota": 20,
-          "dataset_uuid": "47e6af92-daf0-11e0-ac11-473ca1173ab0",
+          "image_uuid": "47e6af92-daf0-11e0-ac11-473ca1173ab0",
           "max_physical_memory": 256,
           "alias": "zone70",
           "nics": [
@@ -1328,7 +1639,7 @@ tab-complete UUIDs rather than having to type them out for every command.
               "ip": "10.2.121.70",
               "netmask": "255.255.0.0",
               "gateway": "10.2.121.1",
-              "primary": 1
+              "primary": true
             }
           ]
         }
@@ -1357,7 +1668,7 @@ tab-complete UUIDs rather than having to type them out for every command.
               "ip": "10.88.88.51",
               "netmask": "255.255.255.0",
               "gateway": "10.88.88.2",
-              "primary": 1
+              "primary": true
             }
           ]
         }
@@ -1367,13 +1678,14 @@ tab-complete UUIDs rather than having to type them out for every command.
 
         vmadm get 54f1cc77-68f1-42ab-acac-5c4f64f5d6e0
 
-    Example 5: Find the VM with the IP 10.2.121.70 (second one with JSON output)
+    Example 5: Find the VM with the IP 10.2.121.70 (second one with JSON
+               output)
 
         vmadm lookup nics.*.ip=10.2.121.70
         vmadm lookup -j nics.*.ip=10.2.121.70
 
-    Example 6: Looking up all 128M VMs with an alias that starts with 'a' or 'b'
-               and then again with JSON output.
+    Example 6: Looking up all 128M VMs with an alias that starts with 'a' or
+               'b' and then again with JSON output.
 
         vmadm lookup ram=128 alias=~^[ab]
         vmadm lookup -j ram=128 alias=~^[ab]
@@ -1393,7 +1705,7 @@ tab-complete UUIDs rather than having to type them out for every command.
         {
           "add_nics": [
             {
-              "physical": "net1",
+              "interface": "net1",
               "nic_tag": "external",
               "mac": "b2:1e:ba:a5:6e:71",
               "ip": "10.2.121.71",
@@ -1466,6 +1778,6 @@ Some of the vmadm commands depend on the vmadmd(1m) service:
     svc/system/smartdc/vmadmd:default
 
 If the vmadmd service is stopped while the vmadm utility is running, the vmadm
-command behaviour will be undefined. Additionally if the service is not running,
-some commands will be unavailable.
+command behaviour will be undefined. Additionally if the service is not
+running, some commands will be unavailable.
 

@@ -1,15 +1,15 @@
-var VM  = require('VM');
+var VM  = require('/usr/vm/node_modules/VM');
 var ZWatch = require('./zwatch');
 var ZoneBootedWatcher = require('./zone_booted_watcher');
 var common = require('./common');
-var async = require('async');
+var async = require('/usr/node/node_modules/async');
 var execFile = require('child_process').execFile;
 var fs = require('fs');
 var net = require('net');
 var path = require('path');
 var util = require('util');
-var zsock = require('zsock');
-var zutil = require('zutil');
+var zsock = require('/usr/node/node_modules/zsock');
+var zutil = require('/usr/node/node_modules/zutil');
 
 var MetadataAgent = module.exports = function (options) {
   var self = this;
@@ -20,7 +20,7 @@ var MetadataAgent = module.exports = function (options) {
 
   this.zones = {};
   this.zoneConnections = {};
-  this.servicesWatcher = new ZoneBootedWatcher(2000);
+  this.servicesWatcher = new ZoneBootedWatcher(2000, this.zones);
 }
 
 MetadataAgent.prototype.createZoneLog = function (type, zonename) {
@@ -72,7 +72,7 @@ MetadataAgent.prototype.createServersOnExistingZones = function (callback) {
             throw error;
           }
 
-          if (zone.brand === 'joyent') {
+          if (zone.brand === 'joyent' || zone.brand === 'joyent-minimal') {
             self.startZoneSocketServer(zone.zonename, true, callback);
           }
           else if (zone.brand === 'kvm') {
@@ -100,7 +100,9 @@ MetadataAgent.prototype.start = function () {
             + error.message);
           return;
         }
-        if (self.zones[msg.zonename].brand === 'joyent') {
+        if (self.zones[msg.zonename].brand === 'joyent'
+          || self.zones[msg.zonename].brand === 'joyent-minimal') {
+
           self.startZoneSocketServer(msg.zonename, true);
         }
         else if (self.zones[msg.zonename].brand === 'kvm') {
@@ -375,6 +377,11 @@ MetadataAgent.prototype.makeMetadataHandler = function (zone, socket) {
       // String value
       if (common.isString(val)) {
         var towrite = val.replace(/^\./mg, "..")
+        write("SUCCESS\n"+towrite+"\n.\n");
+        return;
+      }
+      else if (!isNaN(val)) {
+        var towrite = val.toString().replace(/^\./mg, "..")
         write("SUCCESS\n"+towrite+"\n.\n");
         return;
       }

@@ -23,7 +23,6 @@ CACHE_FILE_JSON="/tmp/.sysinfo.json"
 CACHE="true"
 UNAME_S=$(uname -s)
 ZONENAME=$(zonename)
-DETECT_NICS=
 FORCE=
 PARSABLE=
 UPDATE_ONLY=
@@ -35,14 +34,6 @@ do
         # Force re-running commands (don't read the cached values)
         FORCE="true"
         ;;
-    n)
-        # Doing network discovery, in this mode we can't use the
-        # cached values.  *And* we don't want to cache the output
-        # we create since its non-standard.
-        CACHE=
-        FORCE="true"
-        DETECT_NICS="true"
-        ;;
     p)
         # Output key=value format, not json
         PARSABLE="true"
@@ -53,7 +44,7 @@ do
         UPDATE_ONLY="true"
         ;;
     ?)
-        printf "Usage: %s: [-f] [-n] [-p] [-u]\n"  $0
+        printf "Usage: %s: [-f] [-p] [-u]\n"  $0
         exit 2
     ;;
     esac
@@ -110,7 +101,7 @@ function normalize_mac()
 function get_smbios_system_info()
 {
     # This puts the variables we're pulling out into the local environment
-    eval $(smbios -t SMB_TYPE_SYSTEM \
+    eval $(smbios -t SMB_TYPE_SYSTEM | tr -d "\"" \
         | egrep "Manufacturer: |Product: |Serial Number: |UUID: " \
         | sed -e 's/^ *//' \
         | sed -e 's/: /="/' \
@@ -131,7 +122,7 @@ function get_smbios_system_info()
 
 function get_nonglobal_info()
 {
-    UUID=$(/usr/sbin/mdata-get sdc:instance_uuid)
+    UUID=$(/usr/sbin/mdata-get sdc:uuid)
     QUOTA=$(/usr/sbin/zfs get -Ho value quota /)
 }
 
@@ -160,10 +151,13 @@ function get_smartos_cpu_info()
             | wc -l \
             | tr -d ' '`
 
-        if [[ -x /smartdc/bin/has_hvx ]]; then
-            CPU_Virtualization=$(/smartdc/bin/has_hvx)
+        isainfo=$(isainfo -x)
+        if [[ -n $(echo " ${isainfo} " | /usr/bin/grep " vmx ") ]]; then
+            CPU_Virtualization="vmx"
+        elif [[ -n $(echo " ${isainfo} " | /usr/bin/grep " amd_svm ") ]]; then
+            CPU_Virtualization="svm"
         else
-            CPU_Virtualization="unknown"
+            CPU_Virtualization="none"
         fi
     fi
 
@@ -233,7 +227,7 @@ function get_zpool_profile()
 function get_zpool()
 {
 	if [[ $(zpool list) != "no pools available" ]]; then
-		Zpool=$(zpool list -H | awk '{print $1}');
+		Zpool=$(svcprop -p "config/zpool" svc:/system/smartdc/init);
 
 	        local used=$(zfs get -Hp -o value used ${Zpool})
 	        local available=$(zfs get -Hp -o value available ${Zpool})
@@ -452,26 +446,6 @@ function get_nic_tags()
     done
 }
 
-function detect_nic_tags() {
-    for iface in "${NetworkInterfaces[@]}"; do
-        eval "link_status=\${Network_Interface_${iface}_Link_Status}"
-        if [[ "${link_status}" != "up" ]]; then
-            # polo needs the interface to be plumbed to work
-            /usr/sbin/ifconfig ${iface} plumb
-        fi
-
-        # Leave it at the 30 second timeout for now
-        detected_tag=$(/smartdc/bin/polo ${iface})
-
-        if [[ "${link_status}" != "up" ]]; then
-            /usr/sbin/ifconfig ${iface} unplumb
-        fi
-        if [[ -n "${detected_tag}" ]]; then
-            eval "Network_Interface_${iface}_Detected_Nic_Tag=${detected_tag}"
-        fi
-    done
-}
-
 function get_bootparams()
 {
     WHICH_GREP="/usr/xpg4/bin/grep"
@@ -500,12 +474,41 @@ function get_bootparams()
     done
 }
 
+function get_boot_time()
+{
+    # This is all there is to it.
+    Boot_Time=$(/usr/bin/kstat -p -m unix -n system_misc -s boot_time | cut -f2)
+}
+
+function get_dc_info()
+{
+    if [[ -f /.dcinfo ]]; then
+        Datacenter_Name=$(source /.dcinfo; echo "${SDC_DATACENTER_NAME}")
+        # Headnode ID is only valid if it's an integer.
+        Headnode_ID=$(source /.dcinfo; echo "${SDC_DATACENTER_HEADNODE_ID}" \
+            | grep "^[0-9]*$")
+    fi
+}
+
 function output_parsable()
 {
     cat <<END
 Live_Image='${Live_Image}'
 System_Type='${Uname_System}'
+Boot_Time='${Boot_Time}'
 END
+
+    if [[ -n ${Datacenter_Name} ]]; then
+    cat <<END
+Datacenter_Name='${Datacenter_Name}'
+END
+    fi
+
+    if [[ -n ${Headnode_ID} ]]; then
+    cat <<END
+Headnode_ID=${Headnode_ID}
+END
+    fi
 
     if [[ ${ZONENAME} == "global" ]]; then
         cat <<END
@@ -609,7 +612,20 @@ function output_json()
 {
   "Live Image": "${Live_Image}",
   "System Type": "${Uname_System}",
+  "Boot Time": "${Boot_Time}",
 END
+
+    if [[ -n ${Datacenter_Name} ]]; then
+    cat <<END
+  "Datacenter Name": "${Datacenter_Name}",
+END
+    fi
+
+    if [[ -n ${Headnode_ID} ]]; then
+    cat <<END
+  "Headnode ID": ${Headnode_ID},
+END
+    fi
 
     if [[ ${ZONENAME} == "global" ]]; then
         cat <<END
@@ -768,9 +784,8 @@ get_nic_mappings
 get_nic_tags
 get_smartos_network_interfaces
 get_smartos_vnics
-if [[ ${DETECT_NICS} == "true" ]]; then
-    detect_nic_tags
-fi
+get_boot_time
+get_dc_info
 
 # whenever we update the cache, update both
 if [[ ${CACHE} == "true" ]]; then

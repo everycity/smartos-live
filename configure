@@ -56,8 +56,8 @@ if [ "${HAVE_PKG}" == "true" ]; then
     # nonglobal Zone
     for pkg in gmake binutils autoconf automake \
         bison flex libtool-base python24 p5-XML-Parser \
-        libxslt dbus-glib dbus sun-jre6 sun-jdk6 gmp mpfr; do
-      pkg_info ${pkg} >/dev/null 2>&1 || pkgin -y install ${pkg}
+        libxslt gcc-compiler sun-jre6 sun-jdk6 gmp mpfr nodejs; do
+      pkg_info -qe ${pkg} || pkgin -y install ${pkg}
     done
   fi
 fi
@@ -86,8 +86,7 @@ echo "==> Checking for /opt/gcc/4.4.4/bin/gcc"
 if [ ! -f "/opt/gcc/4.4.4/bin/gcc" ]; then
   if [ ! -z "${GCC44_URL}" ]; then
     cd /opt
-    curl -k https://download.joyent.com/pub/build/gcc-4.tar.bz2 | bzcat \
-      | ${ROOTCMD} tar -xf -
+    curl -k ${GCC44_URL} | bzcat | ${ROOTCMD} tar -xf -
     cd - >/dev/null
   else
     echo "FATAL: unable to download gcc 4.4.4, no URL is set. Please set GCC44_URL in configure."
@@ -108,6 +107,7 @@ if [ ! -f "/opt/SUNWspro/prod/bin/cc" ]; then
     exit 1
  fi
 fi
+[[ -e /opt/SUNWspro/sunstudio12.1 ]] || (cd /opt/SUNWspro && ln -s . sunstudio12.1)
 
 
 if [[ ${GLOBAL_ZONE} -eq 1 ]]; then
@@ -142,14 +142,28 @@ if [ ! -f "projects/illumos/usr/src/tools/env/illumos.sh" ]; then
   fi
 fi
 
-if [[ -n ${ILLUMOS_EXTRA_TARBALL_URL} && -z ${NO_EXTRA_TARBALL} ]]; then
-	EXTRA_TARBALL=$(curl -k ${ILLUMOS_EXTRA_TARBALL_URL} | grep href | tail -n1 | cut -d '"' -f2)
-	[ -f ${EXTRA_TARBALL} ] || curl -k -O ${ILLUMOS_EXTRA_TARBALL_URL}/${EXTRA_TARBALL}
-	if [[ $? != 0 ]]; then
-		EXTRA_TARBALL=""
-	fi
+#
+# The adjunct tarball contains headers and libraries against which runtime
+# dependencies will be encoded into our delivered objects.  It should not
+# exist but is essential until illumos becomes self-contained.
+#
+if [[ -z "${ILLUMOS_ADJUNCT_TARBALL_URL}" ]]; then
+	echo "FATAL: No ILLUMOS_ADJUNCT_TARBALL_URL defined in configure.*"
+	exit 1
 fi
-if [[ ! -f "projects/illumos-extra/Makefile" && -z $EXTRA_TARBALL ]]; then
+ADJUNCT_TARBALL="$(curl -k ${ILLUMOS_ADJUNCT_TARBALL_URL} | \
+    grep href | tail -n1 | cut -d '"' -f2)"
+if [[ -z "${ADJUNCT_TARBALL}" ]]; then
+	echo "FATAL: Unable to list adjunct from ILLUMOS_ADJUNCT_TARBALL_URL"
+	exit 1
+fi
+curl -k -O ${ILLUMOS_ADJUNCT_TARBALL_URL}/${ADJUNCT_TARBALL}
+if [[ $? != 0 ]]; then
+	echo "FATAL: Unable to get adjuncts from ILLUMOS_ADJUNCT_TARBALL_URL"
+	exit 1
+fi
+
+if [[ ! -f "projects/illumos-extra/Makefile" ]]; then
   echo " +--> Getting illumos-extra source tree..."
   if [ -z "${GET_ILLUMOS_EXTRA}" ]; then
     echo "FATAL: No GET_ILLUMOS_EXTRA defined in configure.*, can't get illumos-extra!"
@@ -261,6 +275,8 @@ ON_CLOSED_BINS="\$CODEMGR_WS/closed";            export ON_CLOSED_BINS
 ON_CRYPTO_BINS="\$CODEMGR_WS/on-crypto.\$MACH.tar.bz2"; export ON_CRYPTO_BINS
 REF_PROTO_LIST=\$PARENT_WS/usr/src/proto_list_\${MACH}; export REF_PROTO_LIST
 ROOT="${ROOT}/proto";  export ROOT
+ADJUNCT_PROTO="${ROOT}/proto.strap";	export ADJUNCT_PROTO
+NATIVE_ADJUNCT="/opt/local";		export NATIVE_ADJUNCT
 SRC="\$CODEMGR_WS/usr/src";              export SRC
 VERSION="\$GATE";                        export VERSION
 PARENT_ROOT="${ROOT}/proto"; export PARENT_ROOT

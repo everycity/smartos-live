@@ -40,11 +40,19 @@ ${SVCCFG} -s "system/boot-config:default" setprop config/fastreboot_default=fals
 ${SVCCFG} -s "system/auditd:default" setprop general/enabled=true
 ${SVCCFG} -s "system/coreadm:default" setprop config_params/global_enabled=true
 ${SVCCFG} -s "system/coreadm:default" setprop config_params/global_pattern='/%Z/cores/core.%f.%p'
+
+# These two are only for use in zones.
+${SVCCFG} -s "smartdc/mdata:fetch" setprop general/enabled=false
+${SVCCFG} -s "smartdc/mdata:execute" setprop general/enabled=false
+
 # ${SVCCFG} -s "system/manifest-import" setprop start/exec=:true
 ${SVCCFG} -v apply ${rdmnt}/etc/svc/profile/generic.xml
 ${SVCCFG} -v apply ${rdmnt}/etc/svc/profile/platform.xml
 
 # rcap imports with enabled=false, but applying generic.xml enables it.
 ${SVCCFG} -s "rcap:default" setprop general/enabled=false
+# make sure mail svcs enabled after we've applied generic.xml
+${SVCCFG} -s "network/smtp:sendmail" setprop general/enabled=true
+${SVCCFG} -s "network/sendmail-client:default" setprop general/enabled=true
 
 exit 0

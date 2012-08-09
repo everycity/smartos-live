@@ -1,19 +1,22 @@
-# dsadm
-s etc/bash/bash_completion.d/dsadm=/usr/ds/etc/dsadm.completion
-s usr/sbin/dsadm=/usr/ds/sbin/dsadm
-d usr/ds 0555 root bin
-d usr/ds/node_modules 0555 root bin
-d usr/ds/sbin 0555 root bin
-d usr/ds/etc 0555 root bin
-f usr/ds/etc/dsadm.completion 0444 root bin
-f usr/ds/sbin/dsadm 0555 root bin
-f usr/ds/sbin/dsadm-repair 0555 root bin
-f usr/ds/node_modules/log.js 0444 root bin
-f usr/ds/node_modules/dsadm.js 0444 root bin
-f usr/ds/node_modules/common.js 0444 root bin
-f usr/ds/node_modules/db.js 0444 root bin
-f usr/ds/node_modules/onlyif.js 0444 root bin
-f usr/ds/node_modules/zfs.js 0444 root bin
+# imgadm
+s etc/bash/bash_completion.d/imgadm=/usr/img/etc/imgadm.completion
+s usr/sbin/dsadm=/usr/img/sbin/imgadm
+s usr/sbin/imgadm=/usr/img/sbin/imgadm
+f usr/share/man/man1m/imgadm.1m 0444 root bin
+d usr/img 0555 root bin
+d usr/img/node_modules 0555 root bin
+d usr/img/sbin 0555 root bin
+d usr/img/etc 0555 root bin
+d usr/img/man 0555 root bin
+f usr/img/etc/imgadm.completion 0444 root bin
+f usr/img/etc/sources.list.sample 0444 root bin
+f usr/img/sbin/imgadm 0555 root bin
+f usr/img/sbin/imgadm-repair 0555 root bin
+f usr/img/node_modules/log.js 0444 root bin
+f usr/img/node_modules/imgadm.js 0444 root bin
+f usr/img/node_modules/common.js 0444 root bin
+f usr/img/node_modules/db.js 0444 root bin
+f usr/img/node_modules/zfs.js 0444 root bin
 # new vmadmd
 s etc/bash/bash_completion.d/vmadm=/usr/vm/etc/vmadm.completion
 f lib/svc/manifest/system/system-vmadmd.xml 0444 root bin
@@ -26,15 +29,55 @@ d usr/vm/node_modules 0555 root bin
 d usr/vm/sbin 0555 root bin
 d usr/vm/smf 0555 root bin
 d usr/vm/test 0555 root bin
+d usr/vm/test/tests 0555 root bin
+d usr/vm/test/common 0555 root bin
+f usr/vm/test/common/vmtest.js 0444 root bin
+d usr/vm/test/node-tap 0555 root bin
+f usr/vm/test/node-tap/package.json 0444 root bin
+d usr/vm/test/node-tap/node_modules 0555 root bin
+f usr/vm/test/node-tap/node_modules/tap-assert.js 0444 root bin
+f usr/vm/test/node-tap/node_modules/tap-test.js 0444 root bin
+f usr/vm/test/node-tap/node_modules/traverse.js 0444 root bin
+f usr/vm/test/node-tap/node_modules/tap-runner.js 0444 root bin
+f usr/vm/test/node-tap/node_modules/tap-browser-harness.js 0444 root bin
+f usr/vm/test/node-tap/node_modules/bind-actor.js 0444 root bin
+f usr/vm/test/node-tap/node_modules/tap.js 0444 root bin
+f usr/vm/test/node-tap/node_modules/tap-producer.js 0444 root bin
+d usr/vm/test/node-tap/node_modules/lib 0555 root bin
+f usr/vm/test/node-tap/node_modules/lib/encode.js 0444 root bin
+f usr/vm/test/node-tap/node_modules/chain.js 0444 root bin
+f usr/vm/test/node-tap/node_modules/tap-consumer.js 0444 root bin
+f usr/vm/test/node-tap/node_modules/tap-results.js 0444 root bin
+f usr/vm/test/node-tap/node_modules/difflet.js 0444 root bin
+f usr/vm/test/node-tap/node_modules/yamlish.js 0444 root bin
+f usr/vm/test/node-tap/node_modules/tap-harness.js 0444 root bin
+f usr/vm/test/node-tap/node_modules/slide.js 0444 root bin
+f usr/vm/test/node-tap/node_modules/charm.js 0444 root bin
+f usr/vm/test/node-tap/node_modules/tap-cov-html.js 0444 root bin
+f usr/vm/test/node-tap/node_modules/inherits.js 0444 root bin
+f usr/vm/test/node-tap/node_modules/async-map.js 0444 root bin
+f usr/vm/test/node-tap/node_modules/deep-equal.js 0444 root bin
+f usr/vm/test/node-tap/node_modules/async-map-ordered.js 0444 root bin
+f usr/vm/test/node-tap/node_modules/tap-global-harness.js 0444 root bin
+s usr/vm/test/node-tap/lib=node_modules
+d usr/vm/test/node-tap/bin 0555 root bin
+f usr/vm/test/node-tap/bin/tap 0555 root bin
+f usr/vm/test/runtest 0555 root bin
+f usr/vm/test/runtests 0555 root bin
+f usr/vm/sbin/add-userscript 0555 root bin
 f usr/vm/sbin/vmadm 0555 root bin
 f usr/vm/sbin/vmadmd 0555 root bin
+f usr/vm/sbin/vmunbundle 0555 root bin
+f usr/vm/sbin/zfs_recv 0555 root bin
+f usr/vm/sbin/zfs_send 0555 root bin
 f usr/vm/sbin/zoneevent 0555 root bin
 f usr/vm/etc/vmadm.completion 0444 root bin
-f usr/vm/node_modules/expat_binding.node 0444 root bin
-f usr/vm/node_modules/node-expat.js 0444 root bin
+f usr/node/0.8/node_modules/expat_binding.node 0444 root bin
+f usr/node/0.8/node_modules/node-expat.js 0444 root bin
 f usr/vm/node_modules/nopt.js 0444 root bin
 f usr/vm/node_modules/qmp.js 0444 root bin
 f usr/vm/node_modules/VM.js 0444 root bin
+f usr/vm/node_modules/dladm.js 0444 root bin
 f usr/vm/smf/system-vmadmd 0555 root bin
 f usr/vm/smf/system-vmadmd.xml 0444 root bin
 # metadata daemon
@@ -47,35 +90,36 @@ f usr/vm/lib/metadata/zone_booted_watcher.js 0444 root bin
 f usr/vm/sbin/metadata 0555 root bin
 f usr/vm/smf/system-metadata 0555 root bin
 f lib/svc/manifest/system/system-metadata.xml 0444 root bin
-d usr/vm/node_modules/zsock 0555 root bin
-f usr/vm/node_modules/zsock/package.json 0444 root bin
-d usr/vm/node_modules/zsock/lib 0555 root bin
-f usr/vm/node_modules/zsock/lib/zsock.js 0444 root bin
-d usr/vm/node_modules/zsock/build 0555 root bin
-d usr/vm/node_modules/zsock/build/Release 0555 root bin
-f usr/vm/node_modules/zsock/build/Release/zsock_bindings.node 0444 root bin
-d usr/vm/node_modules/zutil 0555 root bin
-f usr/vm/node_modules/zutil/package.json 0444 root bin
-d usr/vm/node_modules/zutil/build 0555 root bin
-d usr/vm/node_modules/zutil/build/Release 0555 root bin
-f usr/vm/node_modules/zutil/build/Release/zutil_bindings.node 0444 root bin
-d usr/vm/node_modules/zutil/lib 0555 root bin
-f usr/vm/node_modules/zutil/lib/zutil.js 0444 root bin
+d usr/node/0.8/node_modules/zsock 0555 root bin
+f usr/node/0.8/node_modules/zsock/package.json 0444 root bin
+d usr/node/0.8/node_modules/zsock/lib 0555 root bin
+f usr/node/0.8/node_modules/zsock/lib/zsock.js 0444 root bin
+d usr/node/0.8/node_modules/zsock/build 0555 root bin
+d usr/node/0.8/node_modules/zsock/build/Release 0555 root bin
+f usr/node/0.8/node_modules/zsock/build/Release/zsock_bindings.node 0444 root bin
+d usr/node/0.8/node_modules/zutil 0555 root bin
+f usr/node/0.8/node_modules/zutil/package.json 0444 root bin
+d usr/node/0.8/node_modules/zutil/build 0555 root bin
+d usr/node/0.8/node_modules/zutil/build/Release 0555 root bin
+f usr/node/0.8/node_modules/zutil/build/Release/zutil_bindings.node 0444 root bin
+d usr/node/0.8/node_modules/zutil/lib 0555 root bin
+f usr/node/0.8/node_modules/zutil/lib/zutil.js 0444 root bin
 # 0-devpro-stamp
 f usr/include/demangle.h 0644 root bin
 f usr/lib/libC.so.5 0755 root bin
 f usr/lib/libCrun.so.1 0755 root bin
 f usr/lib/libCstd.so.1 0755 root bin
 f usr/lib/libdemangle.so.1 0755 root bin
+s usr/lib/libdemangle.so=libdemangle.so.1
 f usr/lib/libiostream.so.1 0755 root bin
 f usr/lib/amd64/libCrun.so.1 0755 root bin
 f usr/lib/amd64/libCstd.so.1 0755 root bin
 f usr/lib/amd64/libdemangle.so.1 0755 root bin
+s usr/lib/amd64/libdemangle.so=libdemangle.so.1
 f usr/lib/amd64/libiostream.so.1 0755 root bin
 # 0-livesrc-stamp
 d smartdc 0555 root bin
 d smartdc/bin 0555 root bin
-f smartdc/bin/has_hvx 0555 root bin
 f smartdc/bin/qemu-exec 0555 root bin
 f usr/bin/sysinfo 0555 root bin
 f usr/bin/bootparams 0555 root bin
@@ -84,29 +128,34 @@ f usr/bin/disklist 0555 root bin
 f usr/bin/removable_disk 0555 root bin
 f usr/bin/disk_size 0555 root bin
 s usr/sbin/vmadm=../vm/sbin/vmadm
-d usr/node_modules 0555 root bin
-f usr/node_modules/async.js 0444 root bin
-f usr/node_modules/kstat.node 0444 root bin
-f usr/node_modules/onlyif.js 0444 root bin
-f usr/node_modules/sprintf.js 0444 root bin
-f usr/node_modules/syslog.node 0444 root bin
-f usr/node_modules/system.js 0444 root bin
-d usr/node_modules/log4js 0555 root bin
-f usr/node_modules/log4js/package.json 0444 root bin
-d usr/node_modules/log4js/lib 0555 root bin
-f usr/node_modules/log4js/lib/date_format.js 0444 root bin
-f usr/node_modules/log4js/lib/log4js.json 0444 root bin
-f usr/node_modules/log4js/lib/log4js.js 0444 root bin
-d usr/node_modules/log4js/lib/appenders 0555 root bin
-f usr/node_modules/log4js/lib/appenders/multiprocess.js 0444 root bin
-f usr/node_modules/log4js/lib/appenders/console.js 0444 root bin
-f usr/node_modules/log4js/lib/appenders/file.js 0444 root bin
-f usr/node_modules/log4js/lib/appenders/smtp.js 0444 root bin
-f usr/node_modules/log4js/lib/appenders/logLevelFilter.js 0444 root bin
-f usr/node_modules/log4js/lib/appenders/hookio.js 0444 root bin
-f usr/node_modules/log4js/lib/connect-logger.js 0444 root bin
-f usr/node_modules/log4js/lib/layouts.js 0444 root bin
-f usr/node_modules/log4js/lib/levels.js 0444 root bin
+d usr/node 0555 root bin
+d usr/node/0.8 0555 root bin
+d usr/node/0.8/node_modules 0555 root bin
+f usr/node/0.8/node_modules/async.js 0444 root bin
+f usr/node/0.8/node_modules/kstat.node 0444 root bin
+f usr/node/0.8/node_modules/onlyif.js 0444 root bin
+f usr/node/0.8/node_modules/sprintf.js 0444 root bin
+f usr/node/0.8/node_modules/sqlite3.js 0444 root bin
+f usr/node/0.8/node_modules/sqlite3_trace.js 0444 root bin
+f usr/node/0.8/node_modules/node_sqlite3.node 0444 root bin
+f usr/node/0.8/node_modules/syslog.node 0444 root bin
+f usr/node/0.8/node_modules/system.js 0444 root bin
+d usr/node/0.8/node_modules/log4js 0555 root bin
+f usr/node/0.8/node_modules/log4js/package.json 0444 root bin
+d usr/node/0.8/node_modules/log4js/lib 0555 root bin
+f usr/node/0.8/node_modules/log4js/lib/date_format.js 0444 root bin
+f usr/node/0.8/node_modules/log4js/lib/log4js.json 0444 root bin
+f usr/node/0.8/node_modules/log4js/lib/log4js.js 0444 root bin
+d usr/node/0.8/node_modules/log4js/lib/appenders 0555 root bin
+f usr/node/0.8/node_modules/log4js/lib/appenders/multiprocess.js 0444 root bin
+f usr/node/0.8/node_modules/log4js/lib/appenders/console.js 0444 root bin
+f usr/node/0.8/node_modules/log4js/lib/appenders/file.js 0444 root bin
+f usr/node/0.8/node_modules/log4js/lib/appenders/smtp.js 0444 root bin
+f usr/node/0.8/node_modules/log4js/lib/appenders/logLevelFilter.js 0444 root bin
+f usr/node/0.8/node_modules/log4js/lib/appenders/hookio.js 0444 root bin
+f usr/node/0.8/node_modules/log4js/lib/connect-logger.js 0444 root bin
+f usr/node/0.8/node_modules/log4js/lib/layouts.js 0444 root bin
+f usr/node/0.8/node_modules/log4js/lib/levels.js 0444 root bin
 # 0-man-stamp
 d usr/share/man/man3m 0755 root bin
 f usr/share/man/man3m/acos.3m 0444 root bin
@@ -220,7 +269,6 @@ d usr/share/man/man1m 0755 root bin
 f usr/share/man/man1m/netservices.1m 0444 root bin
 f usr/share/man/man1m/tzreload.1m 0444 root bin
 f usr/share/man/man1m/sys-unconfig.1m 0444 root bin
-f usr/share/man/man1m/zonestatd.1m 0444 root bin
 f usr/share/man/man1m/ziostat.1m 0444 root bin
 f usr/share/man/man1m/vfsstat.1m 0444 root bin
 f usr/share/man/man1m/hotplug.1m 0444 root bin
@@ -228,9 +276,7 @@ f usr/share/man/man1m/zonemon.1m 0444 root bin
 f usr/share/man/man1m/zonememstat.1m 0444 root bin
 d usr/share/man/man3lib 0755 root bin
 f usr/share/man/man3lib/libm.3lib 0444 root bin
-f usr/share/man/man3lib/libusb.3lib 0444 root bin
 f usr/share/man/man3lib/libmvec.3lib 0444 root bin
-f usr/share/man/man1/zonestat.1 0444 root bin
 d usr/share/man/man3mvec 0755 root bin
 f usr/share/man/man3mvec/vsin_.3mvec 0444 root bin
 f usr/share/man/man3mvec/vz_abs_.3mvec 0444 root bin

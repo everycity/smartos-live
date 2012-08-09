@@ -1,18 +1,17 @@
-// Copyright 2011 Joyent, Inc.  All rights reserved.
+// Copyright 2012 Joyent, Inc.  All rights reserved.
 //
 // These tests ensure that default values don't change accidentally.
 //
 
 process.env['TAP'] = 1;
-var async = require('async');
+var async = require('/usr/node/node_modules/async');
 var test = require('tap').test;
-var path = require('path');
-var VM = require('VM');
+var VM = require('/usr/vm/node_modules/VM');
 var vmtest = require('../common/vmtest.js');
 
 VM.loglevel = 'DEBUG';
 
-var dataset_uuid = '47e6af92-daf0-11e0-ac11-473ca1173ab0';
+var image_uuid = vmtest.CURRENT_SMARTOS;
 
 test('create and destroy 50 zones', {'timeout': 240000}, function(t) {
     var i;
@@ -23,8 +22,8 @@ test('create and destroy 50 zones', {'timeout': 240000}, function(t) {
             return i < 50;
         },
         function (callback) {
-            var state = {'brand': 'joyent'};
-            vmtest.on_new_vm(t, dataset_uuid, {'autoboot': false,
+            var state = {'brand': 'joyent-minimal'};
+            vmtest.on_new_vm(t, image_uuid, {'autoboot': false,
                 'do_not_inventory': true, 'alias': 'autozone-' + i,
                 'nowait': true}, state, [
                 function (cb) {

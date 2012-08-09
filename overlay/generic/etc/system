@@ -115,7 +115,7 @@ set idle_cpu_no_deep_c=1
 * DANGER!  disabling of zil under review by Bill, Jerry and Ops
 * set zfs:zil_disable=1
 set zfs:zfs_prefetch_disable=1
-set zfs:zfs_nocacheflush=1
+set zfs:zfs_nocacheflush=0
 
 * 10 GbE Tuning
 set ip:ip_squeue_fanout=1
@@ -132,9 +132,10 @@ set dump_plat_mincpu=0
 set dump_bzip2_level=1
 
 *
-* See OS-717 and OS-718 for dealing with the APIX woes.
+* See OS-717, OS-718, OS-1361 and OS-1444 for dealing with the APIX woes.
 *
 set apix_enable=0
+set pcplusmp:apic_timer_preferred_mode=0
 
 *
 * Want additional crash dump metrics
