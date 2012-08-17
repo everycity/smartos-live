@@ -20,35 +20,30 @@ f usr/lib/amd64/s10_brand.so.1 0755 root bin
 f usr/lib/amd64/s10_npreload.so.1 0755 root bin
 d usr/lib/brand/solaris10 0755 root bin
 f usr/lib/brand/solaris10/config.xml 0444 root root
-f usr/lib/brand/solaris10/postattach 0755 root root
 f usr/lib/brand/solaris10/s10_replacefile 0755 root root
-f usr/lib/brand/solaris10/uninstall 0755 root root
 f usr/lib/brand/solaris10/s10_boot 0755 root root
 f usr/lib/brand/solaris10/poststate 0755 root root
 f usr/lib/brand/solaris10/prestate 0755 root root
 f usr/lib/brand/solaris10/s10_net_physical 0755 root root
 s usr/lib/brand/solaris10/64=amd64
-f usr/lib/brand/solaris10/detach 0755 root root
 f usr/lib/brand/solaris10/s10_support 0755 root root
-f usr/lib/brand/solaris10/clone 0755 root root
 f usr/lib/brand/solaris10/version 0444 root root
-f usr/lib/brand/solaris10/smf_disable.lst 0444 root root
-f usr/lib/brand/solaris10/pkgrm.lst 0444 root root
 f usr/lib/brand/solaris10/common.ksh 0444 root root
-f usr/lib/brand/solaris10/preuninstall 0755 root root
 f usr/lib/brand/solaris10/s10_isaexec_wrapper 0755 root root
-f usr/lib/brand/solaris10/image_install 0755 root root
 f usr/lib/brand/solaris10/platform.xml 0444 root root
 f usr/lib/brand/solaris10/solaris10_librtld_db.so.1 0755 root root
 f usr/lib/brand/solaris10/s10_python_wrapper 0755 root root
-f usr/lib/brand/solaris10/attach 0755 root root
-f usr/lib/brand/solaris10/p2v 0755 root root
 f usr/lib/brand/solaris10/s10_native 0755 root root
 d usr/lib/brand/solaris10/amd64 0755 root root
 f usr/lib/brand/solaris10/amd64/solaris10_librtld_db.so.1 0755 root root
 f usr/lib/s10_brand.so.1 0755 root bin
 f usr/lib/s10_npreload.so.1 0755 root bin
-f usr/lib/brand/solaris10/statechange 0755 root root
+s usr/lib/brand/solaris10/jattach=../joyent/jattach
+s usr/lib/brand/solaris10/jdetach=../joyent/jdetach
+s usr/lib/brand/solaris10/jinstall=../joyent/jinstall
+s usr/lib/brand/solaris10/juninstall=../joyent/juninstall
+s usr/lib/brand/solaris10/statechange=../joyent/statechange
+
 
 # driver customizations
 f kernel/drv/e1000g.conf 0644 root sys
