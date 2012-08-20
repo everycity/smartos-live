@@ -373,7 +373,7 @@ setup_fs()
 {
 	[ ! -d $ZONEPATH/site ] && mkdir -m755 $ZONEPATH/site
 	[ ! -d $ZONEPATH/local ] && mkdir -m755 $ZONEPATH/local
-	[ ! -d $ZONEPATH/$SNAPSHOT_DIR ] && mkdir -m755 $ZONEPATH/$SNAPSHOT_DIR
+#	[ ! -d $ZONEPATH/$SNAPSHOT_DIR ] && mkdir -m755 $ZONEPATH/$SNAPSHOT_DIR
 	if [ ! -d $ZONEPATH/ccs ]; then
 		mkdir -m755 $ZONEPATH/ccs
 		(cd /usr/ccs; tar cbf 512 - *) | \
@@ -586,7 +586,7 @@ load_sdc_config
 [[ "$subcommand" == "pre" && $cmd == 0 ]] && setup_fs
 
 if [[ "$subcommand" == "post" && $cmd == 0 ]]; then
-	setup_snapshots
+#	setup_snapshots
 	setup_net
 fi
 
@@ -598,7 +598,7 @@ fi
     cleanup_mount "$6"
 
 if [[ "$subcommand" == "pre" && $cmd == 4 ]]; then
-	cleanup_snapshots
+#	cleanup_snapshots
 	cleanup_net
 fi
 
