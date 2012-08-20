@@ -72,7 +72,9 @@ MetadataAgent.prototype.createServersOnExistingZones = function (callback) {
             throw error;
           }
 
-          if (zone.brand === 'joyent' || zone.brand === 'joyent-minimal') {
+          if (zone.brand === 'joyent'
+            || zone.brand === 'joyent-minimal'
+            || zone.brand === 'solaris10' ) {
             self.startZoneSocketServer(zone.zonename, true, callback);
           }
           else if (zone.brand === 'kvm') {
@@ -101,7 +103,8 @@ MetadataAgent.prototype.start = function () {
           return;
         }
         if (self.zones[msg.zonename].brand === 'joyent'
-          || self.zones[msg.zonename].brand === 'joyent-minimal') {
+          || self.zones[msg.zonename].brand === 'joyent-minimal'
+          || self.zones[msg.zonename].brand === 'solaris10') {
 
           self.startZoneSocketServer(msg.zonename, true);
         }

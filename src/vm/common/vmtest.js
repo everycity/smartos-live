@@ -105,7 +105,9 @@ exports.on_new_vm = function(t, uuid, payload, state, fnlist, callback)
     functions = [
         function(cb) {
             // make sure we have image, otherwise get it.
-            if (state.brand === 'joyent' || state.brand === 'joyent-minimal') {
+            if (state.brand === 'joyent'
+                || state.brand === 'joyent-minimal'
+                || state.brand === 'solaris10') {
                 vmtest.ensureImage(t, '/zones/' + uuid, uuid, function (e) {
                     if (!e) {
                         payload.image_uuid = uuid;
