@@ -114,6 +114,14 @@ update-base:
 	-rm -f 0-subdir-$*-stamp
 
 0-local-stamp: $(LOCAL_SUBDIRS:%=0-subdir-%-stamp)
+	mkdir -p proto/usr/lib/brand/joyent \
+	    proto/usr/lib/brand/joyent-minimal \
+	    proto/usr/lib/brand/kvm
+	echo 1 >proto/usr/lib/brand/joyent/version
+	echo 0 >proto/usr/lib/brand/joyent-minimal/version
+	/usr/bin/env TZ=UTC /usr/bin/date -d "`(cd projects/local/kvm-cmd; \
+	    git log -1.. --pretty=%aD)`" +%Y%m%d%H%M%S > \
+	    proto/usr/lib/brand/kvm/version
 	touch $@
 
 0-subdir-%-stamp:

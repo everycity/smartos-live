@@ -490,6 +490,21 @@ function get_dc_info()
     fi
 }
 
+
+function get_supported_brands()
+{
+    count=1
+    for brand in $(ls /usr/lib/brand/*/platform.xml|sed -e 's%/usr/lib/brand/%%' \
+        -e 's%/platform.xml%%' -e 's%joyent-minimal%joyent_minimal%g'); do
+        Brands[${count}]=${brand}
+        version=0
+        [ -f /usr/lib/brand/${brand}/version ] && \
+            version=$(cat /usr/lib/brand/${brand}/version|egrep -v -e '^$' -e '^#')
+        eval "Brand_${brand}_Version=${version}"
+        ((count++))
+    done
+}
+
 function output_parsable()
 {
     cat <<END
@@ -604,6 +619,10 @@ END
         val=${fields[1]}
         echo "Bootparam_${key}='${val}'"
     done
+    for brand in "${Brands[@]}"; do
+        echo "Brand_${brand}_Version=${version}"
+    done
+
 }
 
 function output_json()
@@ -760,7 +779,23 @@ END
         echo "${trailing_comma}"
     done
 
-    cat <<END
+cat << END
+  }
+  "Supported Brands": {
+END
+    printed=0
+    for brand in "${Brands[@]}"; do
+        ((printed++))
+        trailing_comma=","
+        [[ ${printed} -eq ${#Brands[*]} ]] && trailing_comma=''
+        brand_version_var="Brand_${brand}_Version"
+        eval "brand_version=\${${brand_version_var}}"
+        [[ $brand = "joyent_minimal" ]] && brand="joyent-minimal"
+        echo -n "    \"${brand}\": \"${brand_version}\""
+        echo ${trailing_comma}
+    done
+
+cat << END
   }
 }
 END
@@ -772,6 +807,7 @@ if [[ ${ZONENAME} == "global" ]]; then
     get_zpool
     get_disks
     get_bootparams
+    get_supported_brands
 else
     get_nonglobal_info
 fi

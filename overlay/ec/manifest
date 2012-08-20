@@ -56,3 +56,7 @@ d ec 0755 root sys
 
 s usr/bin/perl=/ec/bin/perl
 s usr/bin/python=/ec/bin/python
+
+f usr/lib/brand/joyent/version
+f usr/lib/brand/joyent-minimal/version
+f usr/lib/brand/kvm/version
