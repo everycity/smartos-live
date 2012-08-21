@@ -780,7 +780,7 @@ END
     done
 
 cat << END
-  }
+  },
   "Supported Brands": {
 END
     printed=0
