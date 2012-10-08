@@ -234,6 +234,8 @@ fi
 [[ $ENABLE_DEBUG -eq 1 ]] && NIGHTLY_EXTRA=$NIGHTLY_EXTRA"D"
 [[ $ENABLE_DEBUG -eq 2 ]] && NIGHTLY_EXTRA=$NIGHTLY_EXTRA"DF"
 
+LOCKUNIQ=$(echo ${ROOT} | tr / _)
+
 cat <<EOF> illumos.sh
 NIGHTLY_OPTIONS="$NIGHTLY_OPTIONS_BASE$NIGHTLY_EXTRA"; export NIGHTLY_OPTIONS
 GATE="${RELEASE_VER}"; export GATE
@@ -251,11 +253,7 @@ export CLONE_WS
 STAFFER=nobody;                         export STAFFER
 MAILTO=$STAFFER;                        export MAILTO
 BUILD_PROJECT=;                         export BUILD_PROJECT
-if [[ -z "${HUDSON_SERVER_COOKIE}" ]]; then
-LOCKNAME="\`whoami\`_\`basename \$CODEMGR_WS\`_nightly.lock"; export LOCKNAME
-else
-LOCKNAME="\`whoami\`_\`basename \$CODEMGR_WS\`_nightly-${HUDSON_SERVER_COOKIE}.lock"; export LOCKNAME
-fi
+LOCKNAME="\`whoami\`_${LOCKUNIQ}_nightly.lock"; export LOCKNAME
 ATLOG="\$CODEMGR_WS/log";                        export ATLOG
 LOGFILE="\$ATLOG/nightly.log";                   export LOGFILE
 MACH=\`uname -p\`;                                export MACH
@@ -277,12 +275,14 @@ CW_NO_SHADOW="1"; export CW_NO_SHADOW
 BUILD_TOOLS="\${CODEMGR_WS}/usr/src/tools/proto/root_\${MACH}-nd/opt"; export BUILD_TOOLS
 SPRO_ROOT=/opt/SUNWspro;                        export SPRO_ROOT
 SPRO_VROOT=\$SPRO_ROOT;                         export SPRO_VROOT
-AW_AS="${ROOT}/proto.strap/usr/gnu/bin/as";	export AW_AS
-AW_AS64="${ROOT}/proto.strap/usr/gnu/bin/as";	export AW_AS64
+GNU_ROOT="${ROOT}/proto.strap/usr/gnu"		export GNU_ROOT
 export GCC_ROOT=${ROOT}/proto.strap/usr;     # Where to find GCC4.x
 export CW_GCC_DIR=\${GCC_ROOT}/bin;  # A temporary hack to allow bootstrap of cw(1)
 export __GNUC="";           # Use GCC as the primary compiler
 export __GNUC4="";          # Use GCC4 specific flags
+JAVA_ROOT=/opt/local/java/sun6;			export JAVA_ROOT
+FLEX=/opt/local/bin/flex;			export FLEX
+
 
 EOF
 
