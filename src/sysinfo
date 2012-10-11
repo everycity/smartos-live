@@ -981,6 +981,7 @@ END
     done
 
 cat << END
+  },
   "Link Aggregations": {
 END
     printed=0
