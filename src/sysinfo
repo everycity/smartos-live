@@ -278,6 +278,7 @@ function is_aggr() {
             return 0
         fi
     done
+    return 1
 }
 
 function get_nic_mappings()
