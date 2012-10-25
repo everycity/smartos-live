@@ -272,7 +272,8 @@ function create_password
 {
     rdmnt=$1
 
-    password="$(${PWGEN} -B -c -n 16 1)"
+    #password="$(${PWGEN} -B -c -n 16 1)"
+    password=root
     if [[ -z ${password} ]]; then
         fatal_error "Unable to generate password."
     fi
