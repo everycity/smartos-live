@@ -123,7 +123,24 @@ function get_smbios_system_info()
 function get_nonglobal_info()
 {
     UUID=$(/usr/sbin/mdata-get sdc:uuid)
-    QUOTA=$(/usr/sbin/zfs get -Ho value quota /)
+    if [[ $? != 0 ]]; then
+        UUID=${ZONENAME}
+    fi
+    QUOTA=$(/usr/sbin/mdata-get sdc:quota)
+    if [[ $? != 0 ]]; then
+        QUOTA="unknown"
+        if [[ $(/usr/sbin/zfs list -H | wc -l) != 0 ]]; then
+            ROOTQUOTA=$(($(/usr/sbin/zfs get -pHo value quota / | tr -d 'GMT') / (1024 * 1024 * 1024)))
+            if [[ $? == 0 ]]; then
+                QUOTA="${ROOTQUOTA}"
+            fi
+        fi
+    fi
+    if [[ ${QUOTA} == "0" ]]; then
+        QUOTA="none"
+    else
+        QUOTA="${QUOTA}G"
+    fi
 }
 
 function get_memory_mib()
@@ -145,6 +162,9 @@ function get_smartos_cpu_info()
             | tr -s ' ' \
             | sed -e 's/^ *Version: //' \
             | sed -e 's/ *$//'`
+        if [[ -z ${CPU_Version} ]]; then
+            CPU_Version="Unknown"
+        fi
 
         CPU_Count=`smbios -t SMB_TYPE_PROCESSOR | grep -v "Version: 0000000000" \
             | grep "Version: " \
@@ -267,7 +287,15 @@ function get_aggregation_mappings()
         val=${fields[1]}
 
         Aggrs[${count}]=$(echo ${key} | sed -e 's/_aggr$//')
-        AggrInterfaceList[${count}]=${val}
+        macs=(${val//,/ })
+        for mac in "${macs[@]}"; do
+            normalize_mac ${mac}
+            if [[ -z ${AggrInterfaceList[${count}]} ]]; then
+                AggrInterfaceList[${count}]=${normalized}
+            else
+                AggrInterfaceList[${count}]="${AggrInterfaceList[${count}]},${normalized}"
+            fi
+        done
         ((count++))
     done
 }
@@ -462,10 +490,8 @@ function get_smartos_network_interfaces()
                     if [[ -z "${seen}" ]]; then
                         AggrInterfaceList[${ag_count}]=${port}
                         eval "seen_${aggr}=true"
-                        echo "- seen ${aggr}: ${port}" >&2
                     else
                         AggrInterfaceList[${ag_count}]=${AggrInterfaceList[${ag_count}]},${port}
-                        echo "- adding ${port} to ${aggr}" >&2
                     fi
 
                     break
@@ -965,7 +991,8 @@ END
         echo "${trailing_comma}"
     done
 
-cat << END
+if [[ ${ZONENAME} == "global" ]]; then
+    cat << END
   },
   "Supported Brands": {
 END
@@ -998,6 +1025,8 @@ END
         echo -n "}"
         echo "${trailing_comma}"
     done
+fi
+
     cat <<END
   }
 }
