@@ -131,8 +131,8 @@ function get_nonglobal_info()
         QUOTA="unknown"
         if [[ $(/usr/sbin/zfs list -H | wc -l) != 0 ]]; then
             ROOTQUOTA=$(($(/usr/sbin/zfs get -pHo value quota / | tr -d 'GMT') / (1024 * 1024 * 1024)))
-            if [[ $? == 0 ]]; then
-                QUOTA="${ROOTQUOTA}"
+            if [[ $? == 0 && ${ROOTQUOTA} != "0" ]]; then
+                QUOTA="${ROOTQUOTA}G"
             fi
         fi
     fi
@@ -324,14 +324,6 @@ function get_nic_mappings()
             ADMIN_NIC=${normalized}
         fi
     fi
-    admin_backup_nic=`/usr/bin/bootparams 2>/dev/null | grep "^admin_backup_nic=" | cut -d '=' -f2-`
-    if [[ -z ${admin_backup_nic} ]] && [[ -f ${configfile} ]]; then
-        admin_backup_nic=`grep "^admin_backup_nic=" ${configfile} | cut -f2- -d'='`
-    fi
-    if [[ -n ${admin_backup_nic} ]]; then
-        normalize_mac ${admin_backup_nic}
-        ADMIN_BACKUP_NIC=${normalized}
-    fi
     external_nic=`/usr/bin/bootparams 2>/dev/null | grep "^external_nic=" | cut -d '=' -f2-`
     if [[ -z ${external_nic} ]] && [[ -f ${configfile} ]]; then
         external_nic=`grep "^external_nic=" ${configfile} | cut -f2- -d'='`
@@ -372,8 +364,8 @@ function get_smartos_network_interfaces()
     seen_nic_tag_admin="true"
 
     # ignore 'LINK SLOT ADDRESS INUSE CLIENT' line
-    for line in $(pfexec /sbin/dladm show-phys -m | grep -v "^LINK " | \
-        awk '{ print $1,$3 }' | tr ' ' '='); do
+    for line in $(pfexec /sbin/dladm show-phys -m \
+        | grep -v "^LINK " | awk '{ print $1,$3 }' | tr ' ' '='); do
 
         nicnames=
         fields=(${line//=/ })
@@ -383,27 +375,10 @@ function get_smartos_network_interfaces()
         ip4addr=$(ifconfig ${iface} 2>/dev/null \
             | grep "inet " | awk '{ print $2 }')
 
-        if [[ $iface != aggr* ]] && [[ -n "${ADMIN_NIC}" ]] && [[ "${ADMIN_NIC}" == "${mac}" ]]; then
-            [[ -z "${ADMIN_BACKUP_NIC}" ]] && nicnames="admin"
+        if [[ -n "${ADMIN_NIC}" ]] && [[ "${ADMIN_NIC}" == "${mac}" ]]; then
+            nicnames="admin"
             NIC_admin=${iface}
         fi
-
-        if [[ $iface != aggr* ]] && [[ -n "${ADMIN_BACKUP_NIC}" ]] && [[ "${ADMIN_BACKUP_NIC}" == "${mac}" ]]; then
-            NIC_admin_slave=${iface}
-        fi
-
-        if [[ $iface = aggr* ]] && [[ -n "${ADMIN_BACKUP_NIC}" ]] && \
-           ([[ "${ADMIN_NIC}" == "${mac}" ]] || [[ "${ADMIN_BACKUP_NIC}" == "${mac}" ]]); then
-            nicnames="admin"
-        fi
-
-        if [[ -n "${NIC_admin}" ]] && [[ -n "${NIC_admin_slave}" ]] && [[ -z "${NIC_admin_master}" ]]; then
-            [[ $iface == aggr* ]] && nicnames="admin"
-            # XXX need to find first available aggr programmatically
-            NIC_admin_master=${NIC_admin}
-            NIC_admin=aggr0
-        fi
-
         if [[ -n "${EXTERNAL_NIC}" ]] && [[ "${EXTERNAL_NIC}" == "${mac}" ]]; then
             [[ -n ${nicnames} ]] && nicnames="${nicnames},"
             nicnames="${nicnames}external"
@@ -600,7 +575,6 @@ function get_nic_tags()
         fields=(${line//=/ })
         key=${fields[0]}
         if [[ $key != "admin_nic" ]] \
-            && [[ $key != "admin_backup_nic" ]] \
             && [[ $key != "external_nic" ]] \
             && [[ $key != "internal_nic" ]]; then
 
@@ -631,7 +605,25 @@ function get_aggr_params()
             if [[ -z "${lacp_val}" ]]; then
                 lacp_val="off"
             fi
+            backup_mac=$(/usr/bin/bootparams | grep "^${aggr}_backup=" | cut -f2 -d'=')
+               if [[ -z ${backup_mac} ]] && [[ -f ${configfile} ]]; then
+               backup_mac=`grep "^${aggr}_backup=" ${configfile} | cut -f2- -d'='`
+            fi
+            if [[ -n ${backup_mac} ]]; then
+                 normalize_mac ${backup_mac}
+                 backup_mac_normalized=${normalized}
+                 backup_nic=
+                 for line in $(pfexec /sbin/dladm show-phys -m | \
+                     awk 'BEGIN { getline } { print $1,$3 }' | tr ' ' '='); do
+                     fields=(${line//=/ })
+                     iface=${fields[0]}
+                     normalize_mac ${fields[1]}
+                     mac=${normalized}
+                     [[ "${mac}" == "${backup_mac_normalized}" ]] && backup_nic=${iface}
+                 done
+            fi
             eval "Aggregation_${aggr}_LACP_mode=${lacp_val}"
+            eval "Aggregation_${aggr}_Backup_Interface=${backup_nic}"
             eval "Aggregation_${aggr}_Interfaces=${list}"
 
             ((c++))
@@ -684,7 +676,6 @@ function get_dc_info()
             | grep "^[0-9]*$")
     fi
 }
-
 
 function get_supported_brands()
 {
@@ -751,8 +742,6 @@ END
     done
 
     [[ -n ${NIC_admin} ]] && echo "NIC_admin='${NIC_admin}'"
-    [[ -n ${NIC_admin_master} ]] && echo "NIC_admin_master='${NIC_admin_master}'"
-    [[ -n ${NIC_admin_slave} ]] && echo "NIC_admin_slave='${NIC_admin_slave}'"
     [[ -n ${NIC_external} ]] && echo "NIC_external='${NIC_external}'"
     [[ -n ${NIC_internal} ]] && echo "NIC_internal='${NIC_internal}'"
 
@@ -825,13 +814,15 @@ END
             lacp_var="Aggregation_${aggr}_LACP_mode"
             eval "lacp=\${${lacp_var}}"
             echo "${lacp_var}=${lacp}"
+            backup_var="Aggregation_${aggr}_Backup_Interface"
+            eval "backup=\${${backup_var}}"
+            echo "${backup_var}=${backup}"
         done
     fi
 
     for aggr in "${CompleteAggrList[@]}"; do
         echo $aggr
     done
-
 }
 
 function output_json()
@@ -1005,7 +996,7 @@ END
         echo ${trailing_comma}
     done
 
-cat << END
+    cat <<END
   },
   "Link Aggregations": {
 END
@@ -1015,9 +1006,11 @@ END
         trailing_comma=","
         [[ ${printed} -eq ${#UpAggrs[*]} ]] && trailing_comma=''
         eval "lacp_mode=\${Aggregation_${aggr}_LACP_mode}"
+        eval "backup=\${Aggregation_${aggr}_Backup_Interface}"
         eval "links=\${Aggregation_${aggr}_Interfaces}"
         echo -n "    \"${aggr}\": {"
         echo -n "\"LACP mode\": \"${lacp_mode}\", "
+        echo -n "\"Backup Interface\": \"${backup}\", "
         echo -n "\"Interfaces\": [\"$(echo ${links} | sed -e "s/,/\", \"/g")\"]"
         echo -n "}"
         echo "${trailing_comma}"

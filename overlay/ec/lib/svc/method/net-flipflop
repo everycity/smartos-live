@@ -68,22 +68,22 @@ sub flip_nics()
 }
 
 # <SmartOS specific>
+
+my $NIC_admin='aggr0';
+
 my $cmd_output = `/usr/bin/sysinfo -p`;
 
 if ($? == 0) {
 	foreach my $line (split /\n/, $cmd_output) {
 		(my $var_name, my $var_value) = split /=/, $line, 2;
         $var_value =~ s/['|"]//g;
-		if ($var_name eq 'NIC_admin') {
-            $NIC_admin=$var_value;
-        }
-        if ($var_name eq 'NIC_admin_master') {
+        if ($var_name eq 'Aggregation_aggr0_Interfaces') {
             $NIC_admin_master=$var_value;
         }
-        if ($var_name eq 'NIC_admin_slave') {
+        if ($var_name eq 'Aggregation_aggr0_Backup_Interface') {
             $NIC_admin_slave=$var_value;
-        }
 	}
+        }
 } else {
     printf "Failed to run /usr/bin/sysinfo -p\n";
     exit 1;
@@ -107,6 +107,8 @@ if ($NIC_admin && $NIC_admin_master && $NIC_admin_slave) {
     } else {
         $standby_nic = $NIC_admin_master;
     }
+
+    `/usr/sbin/ifconfig $standby_nic plumb || /bin/true`;
     
     #printf "NIC_admin=$NIC_admin NIC_admin_master=$NIC_admin_master NIC_admin_slave=$NIC_admin_slave\n";
     #printf "aggr_name=$aggr_name active_nic=$active_nic standby_nic=$standby_nic\n";
