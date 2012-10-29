@@ -91,7 +91,7 @@ if smf_is_globalzone; then
   fi
 
   # use the hostname specified in th config file, 
-  if [[ -z $hostname ]]; then
+  if [[ -z $hostname ]] || [ "$hostname" == "unknown" ]; then
     configfile="$(svcprop -p 'joyentfs/usb_copy_path' svc:/system/filesystem/smartdc:default)/config"
     if [[ ! -f ${configfile} ]]; then
       configfile="$(svcprop -p 'joyentfs/usb_mountpoint' svc:/system/filesystem/smartdc:default)/config"
