@@ -25,6 +25,7 @@
  *
  */
 
+var async = require('/usr/node/node_modules/async');
 var fs = require('fs');
 var VM = require('/usr/vm/node_modules/VM');
 var nopt = require('/usr/vm/node_modules/nopt');
@@ -174,6 +175,22 @@ function validFilterKey(key)
     }
 
     return false;
+}
+
+// just rules out some confusing options that work for lookup but don't make
+// sense in list form.
+function validColumnKey(key)
+{
+    var bad_re;
+
+    // when we have a .*. we won't know which one to show
+    bad_re = new RegExp('^(disks|filesystems|nics)\.\\*\.*');
+
+    if (key.match(bad_re)) {
+        return false;
+    }
+
+    return true;
 }
 
 function getListProperties(field)
@@ -625,9 +642,11 @@ function main(callback)
     var key;
     var knownOpts = {};
     var order;
+    var order_list;
     var parsed;
     var shortHands = {};
     var sortby;
+    var sortby_list;
     var type;
     var types;
     var uuid;
@@ -869,6 +888,24 @@ function main(callback)
             }
         }
 
+        order_list = order.split(',');
+        for (key in order_list) {
+            if (!validColumnKey(order_list[key])) {
+                callback(new Error('Invalid order key: "' + order_list[key]
+                    + '"'));
+                return;
+            }
+        }
+
+        sortby_list = sortby.split(',');
+        for (key in sortby_list) {
+            if (!validColumnKey(sortby_list[key])) {
+                callback(new Error('Invalid sort key: "' + sortby_list[key]
+                    + '"'));
+                return;
+            }
+        }
+
         listVM(extra, order, sortby, options, callback);
         break;
     case 'halt':
@@ -895,19 +932,57 @@ function main(callback)
     }
 }
 
+function flushLogs(callback)
+{
+    if (!VM.log) {
+        callback();
+        return;
+    }
+
+    async.forEach(VM.log.streams, function (str, cb) {
+        var returned = false;
+
+        if (!str || !str.stream) {
+            cb();
+            return;
+        }
+
+        str.stream.once('drain', function () {
+            if (!returned) {
+                cb();
+            }
+            return;
+        });
+
+        if (str.stream.write('')) {
+            returned = true;
+            cb();
+            return;
+        }
+    }, function () {
+        callback();
+        return;
+    });
+}
+
 onlyif.rootInSmartosGlobal(function (err) {
     if (err) {
         console.error('FATAL: cannot run because: ' + err);
         process.exit(2);
+        return;
     }
     main(function (e, message) {
         if (e) {
             console.error(e.message);
-            process.exit(1);
+            flushLogs(function () {
+                process.exit(1);
+            });
         }
         if (message) {
             console.error(message);
         }
-        process.exit(0);
+        flushLogs(function () {
+            process.exit(0);
+        });
     });
 });
