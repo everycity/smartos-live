@@ -144,3 +144,8 @@ set dump_metrics_on=1
 * if necessary.
 *
 set pidmax=99999
+
+*
+* ixgbe: allow for unsupported SFP modules
+*
+set ixgbe:ixgbe_allow_unsupported_sfp=1
