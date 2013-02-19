@@ -27,9 +27,11 @@
 
 var async = require('/usr/node/node_modules/async');
 var fs = require('fs');
+var fwLog = require('/usr/fw/lib/util/log');
 var VM = require('/usr/vm/node_modules/VM');
 var nopt = require('/usr/vm/node_modules/nopt');
 var onlyif = require('/usr/node/node_modules/onlyif');
+var panic = require('/usr/node/node_modules/panic');
 var sprintf = require('/usr/node/node_modules/sprintf').sprintf;
 var tty = require('tty');
 var util = require('util');
@@ -57,7 +59,8 @@ var COMMANDS = [
     'rollback-snapshot',
     'send',
     'sysrq',
-    'update'
+    'update',
+    'validate'
 ];
 
 /*
@@ -145,6 +148,8 @@ function usage(message, code)
     out('sysrq <uuid> <nmi|screenshot>');
     out('update <uuid> [-f <filename>]');
     out(' -or- update <uuid> property=value [property=value ...]');
+    out('validate create [-f <filename>]');
+    out('validate update <brand> [-f <filename>]');
     out('');
     out('For more detailed information on the use of this command,'
         + 'type \'man vmadm\'.');
@@ -386,6 +391,7 @@ function addCommandOptions(command, opts, shorts)
     case 'receive':
     case 'recv':
     case 'update':
+    case 'validate':
         shorts.f = ['--file'];
         break;
     case 'list':
@@ -864,6 +870,49 @@ function main(callback)
         types = parseInfoArgs(parsed.argv.remain);
         getInfo(uuid, types, callback);
         break;
+    case 'validate':
+        if (parsed.hasOwnProperty('file') && parsed.file !== '-') {
+            filename = parsed.file;
+        } else {
+            filename = '-';
+        }
+        if (filename === '-' && tty.isatty(0)) {
+            usage('Will not ' + command + ' from stdin when stdin is a '
+                + 'tty.');
+        }
+        if (!parsed.argv.remain || parsed.argv.remain.length < 1) {
+            usage('Will not ' + command + ' without a valid action.');
+        }
+        if (parsed.argv.remain[0] === 'update'
+            && parsed.argv.remain.length !== 2) {
+
+            usage('Will not ' + command + ' without a valid action and brand.');
+        }
+        readFile(filename, function (err, payload) {
+            var brand;
+            var action = parsed.argv.remain[0];
+
+            if (err) {
+                callback(err);
+                return;
+            }
+
+            if (action === 'update') {
+                brand = parsed.argv.remain[1];
+            } else {
+                brand = payload.brand;
+            }
+
+            VM.validate(brand, action, payload, function (e) {
+                if (e) {
+                    callback(new Error(JSON.stringify(e, null, 2)));
+                } else {
+                    callback(null, 'VALID \'' + action
+                        + '\' payload for ' + brand + ' brand VMs.');
+                }
+            });
+        });
+        break;
     case 'help':
         usage(null, 0);
         break;
@@ -989,33 +1038,25 @@ function main(callback)
 
 function flushLogs(callback)
 {
+    var streams;
+
     if (!VM.log) {
-        callback();
+        fwLog.flush(callback);
         return;
     }
 
-    async.forEach(VM.log.streams, function (str, cb) {
-        var returned = false;
-
+    streams = VM.log.streams;
+    async.forEachSeries(streams, function (str, cb) {
         if (!str || !str.stream) {
             cb();
             return;
         }
 
-        str.stream.once('drain', function () {
-            if (!returned) {
-                cb();
-            }
-            return;
-        });
-
-        if (str.stream.write('')) {
-            returned = true;
-            cb();
-            return;
-        }
+        str.stream.end();
+        cb();
+        return;
     }, function () {
-        callback();
+        fwLog.flush(callback);
         return;
     });
 }
@@ -1026,18 +1067,25 @@ onlyif.rootInSmartosGlobal(function (err) {
         process.exit(2);
         return;
     }
+
+    panic.enablePanicOnCrash({
+        'skipDump': true,
+        'abortOnPanic': true
+    });
+
     main(function (e, message) {
         if (e) {
             console.error(e.message);
             flushLogs(function () {
                 process.exit(1);
             });
+        } else {
+            if (message) {
+                console.error(message);
+            }
+            flushLogs(function () {
+                process.exit(0);
+            });
         }
-        if (message) {
-            console.error(message);
-        }
-        flushLogs(function () {
-            process.exit(0);
-        });
     });
 });

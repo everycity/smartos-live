@@ -35,6 +35,7 @@ var fs = require('fs');
 var net = require('net');
 var VM = require('/usr/vm/node_modules/VM');
 var onlyif = require('/usr/node/node_modules/onlyif');
+var panic = require('/usr/node/node_modules/panic');
 var path = require('path');
 var spawn = cp.spawn;
 var http = require('http');
@@ -370,7 +371,16 @@ function handleProvisioning(vmobj, cb)
                 cb(wait_err);
                 return;
             }
-            success();
+            VM.unsetTransition(vmobj, function (unset_err) {
+                if (unset_err) {
+                    VM.log.debug(unset_err, 'failed to unset transition');
+                    failure();
+                } else {
+                    VM.log.debug('unset provision transition for '
+                        + vmobj.uuid);
+                    success();
+                }
+            });
         });
     } else if (fs.existsSync(provision_ok_fn)) {
         // no /var/svc/provisioning file, but we have success file
@@ -1108,6 +1118,22 @@ function loadVM(vmobj, do_autoboot)
     spawnRemoteDisplay(vmobj);
 }
 
+// To help diagnose problems we write the keys we're watching to the TRACE log
+// which can be viewed using dtrace.
+function startTraceLoop() {
+    setInterval(function () {
+        var prov_wait_keys = Object.keys(PROV_WAIT);
+        var timer_keys = Object.keys(TIMER);
+
+        if (prov_wait_keys.length > 0) {
+            log.trace('PROV_WAIT keys: ' + JSON.stringify(prov_wait_keys));
+        }
+        if (timer_keys.length > 0) {
+            log.trace('TIMER keys: ' + JSON.stringify(timer_keys));
+        }
+    }, 5000);
+}
+
 // kicks everything off
 function main()
 {
@@ -1115,6 +1141,7 @@ function main()
 
     startZoneWatcher(updateZoneStatus);
     startHTTPHandler();
+    startTraceLoop();
 
     loadConfig(function (err) {
         var do_autoboot = false;
@@ -1198,6 +1225,12 @@ onlyif.rootInSmartosGlobal(function (err) {
         log.error(err, 'Fatal: cannot run because: ' + err.message);
         process.exit(1);
     }
+
+    panic.enablePanicOnCrash({
+        'skipDump': true,
+        'abortOnPanic': true
+    });
+
     log.info('Starting vmadmd');
     main();
 });
