@@ -36,7 +36,7 @@
  *      });
  */
 
-var warn = console.warn;
+var p = console.warn;
 var path = require('path');
 var fs = require('fs');
 var format = require('util').format;
@@ -79,13 +79,20 @@ var IP_RE = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/;
 
 // ---- internal support stuff
 
-function ipFromHost(host, callback) {
+function _indent(s, indent) {
+    if (!indent) indent = '    ';
+    var lines = s.split(/\r?\n/g);
+    return indent + lines.join('\n' + indent);
+}
+
+function ipFromHost(host, log, callback) {
     if (IP_RE.test(host)) {
         callback(null, host);
         return;
     }
     // No DNS in SmartOS GZ by default, so handle DNS ourself.
     var cmd = format('/usr/sbin/dig %s +short', host);
+    log.trace({cmd: cmd}, 'run dig');
     exec(cmd, function (error, stdout, stderr) {
         if (error) {
             callback(new errors.InternalError(
@@ -238,13 +245,38 @@ function getZfsDataset(name, properties, callback) {
 }
 
 
+function normUrlFromUrl(u) {
+    // `url.parse('example.com:9999')` is not what you expect. Make sure we
+    // have a protocol.
+    if (! /^\w+:\/\// .test(u)) {
+        u = 'http://' + u;
+    }
+
+    var parsed = url.parse(u);
+
+    // Don't want trailing '/'.
+    if (parsed.pathname.slice(-1) === '/') {
+        parsed.pathname = parsed.pathname.slice(0, -1);
+    }
+
+    // Drop redundant ports.
+    if (parsed.port
+        && ((parsed.protocol === 'https:' && parsed.port === '443')
+        || (parsed.protocol === 'http:' && parsed.port === '80'))) {
+        parsed.port = '';
+        parsed.host = parsed.hostname;
+    }
+
+    return url.format(parsed);
+}
+
+
 
 // ---- Source class
 
-
 /**
  * A light wrapper around an image source repository. A source has a
- * `url` and a `type` ("dsapi" or "imgapi"). `getNormUrl()` handles (lazy)
+ * `url` and a `type` ("dsapi" or "imgapi"). `getResolvedUrl()` handles (lazy)
  * DNS resolution.
  *
  * @param options {Object} with these keys
@@ -259,6 +291,7 @@ function Source(options) {
     assert.optionalString(options.type, 'options.type');
     assert.object(options.log, 'options.log');
     this.url = options.url;
+    this.normUrl = normUrlFromUrl(this.url);
     this.log = options.log;
 
     // Figure out `type` if necessary.
@@ -267,8 +300,8 @@ function Source(options) {
         // Per the old imgadm (v1) the old source URL includes the
         // "datasets/" subpath. That's not a completely reliable marker, but
         // we'll use that.
-        var isDsapiUrl = /datasets\/?$/;
-        if (isDsapiUrl.test(this.url)) {
+        var isDsapiUrl = /datasets$/;
+        if (isDsapiUrl.test(this.normUrl)) {
             this.type = 'dsapi';
         } else {
             this.type = 'imgapi';
@@ -276,34 +309,32 @@ function Source(options) {
     }
 }
 
+
 /**
- * Return a normalized URL: no trailing slash, DNS-resolved host
+ * Return a URL with DNS-resolved host
  *
  * @params callback {Function} `function (err, normUrl)`
  */
-Source.prototype.getNormUrl = function getNormUrl(callback) {
+Source.prototype.getResolvedUrl = function getResolvedUrl(callback) {
     assert.func(callback, 'callback');
 
     var self = this;
-    if (this._normUrl) {
-        callback(null, this._normUrl);
+    if (this._resolvedUrl) {
+        callback(null, this._resolvedUrl);
         return;
     }
 
-    var parsed = url.parse(this.url);
-    if (parsed.pathname === '/') {
-        parsed.pathname = ''; // Don't want trailing '/'.
-    }
-
-    self.log.trace({host: parsed.host}, 'DNS resolve source host');
-    ipFromHost(parsed.host, function (dnsErr, ip) {
+    var parsed = url.parse(this.normUrl);
+    self.log.trace({resolve: parsed.hostname}, 'DNS resolve source host');
+    ipFromHost(parsed.hostname, self.log, function (dnsErr, ip) {
         if (dnsErr) {
             callback(dnsErr);
             return;
         }
-        parsed.host = ip;
-        self._normUrl = url.format(parsed);
-        callback(null, self._normUrl);
+        parsed.hostname = ip;
+        parsed.host = ip + (parsed.port ? ':' + parsed.port : '');
+        self._resolvedUrl = url.format(parsed);
+        callback(null, self._resolvedUrl);
         return;
     });
 };
@@ -419,6 +450,17 @@ IMGADM.prototype._addSource = function _addSource(
                     || res.statusCode !== 200
                     || (sourceToPing.type === 'imgapi' && !pong.imgapi))
                 {
+                    if (res
+                        && res.headers['content-type'] !== 'application/json')
+                    {
+                        var body = res.body;
+                        if (body && body.length > 1024) {
+                            body = body.slice(0, 1024) + '...';
+                        }
+                        err = new Error(format(
+                            'statusCode %s, response not JSON:\n%s',
+                            res.statusCode, _indent(body)));
+                    }
                     next(new errors.SourcePingError(err, sourceToPing));
                     return;
                 }
@@ -427,10 +469,10 @@ IMGADM.prototype._addSource = function _addSource(
         });
     }
 
-
     // No-op if already have this URL.
+    var normUrl = normUrlFromUrl(source.url);
     for (var i = 0; i < self.sources.length; i++) {
-        if (self.sources[i].url === source.url)
+        if (self.sources[i].normUrl === normUrl)
             return callback(null, false);
     }
 
@@ -471,8 +513,9 @@ IMGADM.prototype._addSource = function _addSource(
 IMGADM.prototype._delSource = function _delSource(sourceUrl, callback) {
     assert.string(sourceUrl, 'sourceUrl');
     var lenBefore = this.sources.length;
+    var normSourceUrl = normUrlFromUrl(sourceUrl);
     this.sources = this.sources.filter(function (s) {
-        return s.url !== sourceUrl;
+        return s.normUrl !== normSourceUrl;
     });
     var changed = (lenBefore !== this.sources.length);
     callback(null, changed);
@@ -644,14 +687,6 @@ IMGADM.prototype.saveConfig = function saveConfig(callback) {
 };
 
 
-IMGADM.prototype.sourceFromUrl = function sourceFromUrl(sourceUrl) {
-    if (!this.sources) {
-        return null;
-    }
-    return this.sources.filter(
-        function (s) { return s.url === sourceUrl; })[0];
-};
-
 
 /**
  * Return an API client for the given source.
@@ -668,35 +703,34 @@ IMGADM.prototype.clientFromSource = function clientFromSource(
     if (self._clientCache === undefined) {
         self._clientCache = {};
     }
-    var client = self._clientCache[source.url];
+    var client = self._clientCache[source.normUrl];
     if (client) {
         callback(null, client);
         return;
     }
 
-    source.getNormUrl(function (normErr, normUrl) {
+    source.getResolvedUrl(function (normErr, normUrl) {
         if (normErr) {
             callback(normErr);
             return;
         }
         if (source.type === 'dsapi') {
-            var baseUrl = path.dirname(source.url); // drop 'datasets/' tail
-            var baseNormUrl = path.dirname(normUrl);
-            self._clientCache[source.url] = dsapi.createClient({
+            var baseNormUrl = path.dirname(normUrl); // drop 'datasets/' tail
+            self._clientCache[source.normUrl] = dsapi.createClient({
                 agent: false,
                 url: baseNormUrl,
-                log: self.log.child({component: 'api', source: baseUrl}, true)
+                log: self.log.child(
+                    {component: 'api', source: source.url}, true)
             });
         } else {
-            self._clientCache[source.url] = imgapi.createClient({
+            self._clientCache[source.normUrl] = imgapi.createClient({
                 agent: false,
                 url: normUrl,
                 log: self.log.child(
                     {component: 'api', source: source.url}, true)
             });
         }
-        callback(null, self._clientCache[source.url]);
-        return;
+        callback(null, self._clientCache[source.normUrl]);
     });
 };
 
@@ -901,7 +935,8 @@ IMGADM.prototype._loadImages = function _loadImages(callback) {
                         imageNames.push(name);
                     }
                 } else {
-                    // This is a filesystem using an image.
+                    // This *may* be a filesystem using an image. See
+                    // joyent/smartos-live#180 for a counter-example.
                     name = origin.split('@')[0];
                     if (usageFromImageName[name] === undefined) {
                         usageFromImageName[name] = 1;
@@ -910,14 +945,6 @@ IMGADM.prototype._loadImages = function _loadImages(callback) {
                     }
                 }
             }
-
-            // Sanity check that for every image name for which there is usage
-            // there is an image filesystem.
-            Object.keys(usageFromImageName).forEach(function (imageName) {
-                assert.ok(imageNames.indexOf(imageName) !== -1,
-                    format('"%s" image name is an origin for a zfs fs, but '
-                        + 'that image fs is not found', imageName));
-            });
 
             var imagesInfo = [];
             async.forEachSeries(
@@ -1061,11 +1088,14 @@ IMGADM.prototype.sourcesList = function sourcesList(callback) {
  * Get info (mainly manifest data) on the given image UUID from sources.
  *
  * @param uuid {String}
+ * @param ensureActive {Boolean} Set to true to skip inactive images.
  * @param callback {Function} `function (err, imageInfo)` where `imageInfo`
  *      is `{manifest: <manifest>, source: <source>}`
  */
-IMGADM.prototype.sourcesGet = function sourcesGet(uuid, callback) {
+IMGADM.prototype.sourcesGet
+        = function sourcesGet(uuid, ensureActive, callback) {
     assert.string(uuid, 'uuid');
+    assert.bool(ensureActive, 'ensureActive');
     assert.func(callback, 'callback');
     var self = this;
     var errs = [];
@@ -1091,9 +1121,23 @@ IMGADM.prototype.sourcesGet = function sourcesGet(uuid, callback) {
                 client.getImage(uuid, function (getErr, manifest) {
                     if (getErr && getErr.statusCode !== 404) {
                         errs.push(self._errorFromClientError(source, getErr));
+                        next();
+                        return;
                     }
                     if (manifest) {
-                        imageInfo = {manifest: manifest, source: source};
+                        if (ensureActive) {
+                            try {
+                                manifest
+                                    = imgmanifest.upgradeManifest(manifest);
+                            } catch (err) {
+                                errs.push(new errors.InvalidManifestError(err));
+                                next();
+                                return;
+                            }
+                        }
+                        if (!ensureActive || manifest.state === 'active') {
+                            imageInfo = {manifest: manifest, source: source};
+                        }
                     }
                     next();
                 });
@@ -1238,6 +1282,18 @@ IMGADM.prototype.importImage = function importImage(options, callback) {
     assert.object(options.source, 'options.source');
     assert.optionalBool(options.quiet, 'options.quiet');
 
+    // Ensure this image is active (upgrading manifest if required).
+    try {
+        options.manifest = imgmanifest.upgradeManifest(options.manifest);
+    } catch (err) {
+        callback(new errors.InvalidManifestError(err));
+        return;
+    }
+    if (options.manifest.state !== 'active') {
+        callback(new errors.ImageNotActiveError(options.manifest.uuid));
+        return;
+    }
+
     this._installImage(options, callback);
 };
 
@@ -1302,7 +1358,7 @@ IMGADM.prototype._installImage = function _installImage(options, callback) {
         source: options.source
     };
     var dsName = format('%s/%s', options.zpool, uuid);
-    var tmpDsName = dsName + '-partial';
+    var tmpDsName;  // set when the 'zfs receive' begins
     var bar = null;  // progress-bar object
     var md5Hash = null;
     var sha1Hash = null;
@@ -1310,15 +1366,19 @@ IMGADM.prototype._installImage = function _installImage(options, callback) {
     var finished = false;
 
     function cleanupAndExit(cleanDsName, err) {
-        var cmd = format('/usr/sbin/zfs destroy -r %s', cleanDsName);
-        exec(cmd, function (error, stdout, stderr) {
-            if (error) {
-                log.error({cmd: cmd, error: error, stdout: stdout,
-                    stderr: stderr, cleanDsName: cleanDsName},
-                    'error destroying tmp dataset while cleaning up');
-            }
+        if (cleanDsName) {
+            var cmd = format('/usr/sbin/zfs destroy -r %s', cleanDsName);
+            exec(cmd, function (error, stdout, stderr) {
+                if (error) {
+                    log.error({cmd: cmd, error: error, stdout: stdout,
+                        stderr: stderr, cleanDsName: cleanDsName},
+                        'error destroying tmp dataset while cleaning up');
+                }
+                callback(err);
+            });
+        } else {
             callback(err);
-        });
+        }
     }
 
     function destroyChildSnapshots(parentDsName, next) {
@@ -1452,10 +1512,14 @@ IMGADM.prototype._installImage = function _installImage(options, callback) {
     }
 
     getImageFileInfo(function (err, info) {
+        if (err) {
+            finish(err);
+            return;
+        }
+
         // image file stream                [A]
         //      | inflator (if necessary)   [B]
         //      | zfs recv                  [C]
-
         // [A]
         if (!options.quiet && process.stderr.isTTY) {
             bar = new ProgressBar(
@@ -1498,14 +1562,24 @@ IMGADM.prototype._installImage = function _installImage(options, callback) {
             });
             uncompressor.on('exit', function (code) {
                 if (code !== 0) {
-                    finish(new errors.InternalError({message: format(
-                        'uncompression error while importing: '
-                        + 'exit code %s', code)}));
+                    var msg;
+                    if (compression === 'bzip2' && code === 2) {
+                        msg = format('%s uncompression error while '
+                            + 'importing: exit code %s (corrupt compressed '
+                            + 'file): usually indicates a network error '
+                            + 'while downloading, try again',
+                            compression, code);
+                    } else {
+                        msg = format('%s uncompression error while '
+                            + 'importing: exit code %s', compression, code);
+                    }
+                    finish(new errors.UncompressionError(msg));
                 }
             });
         }
 
         // [C]
+        tmpDsName = dsName + '-partial';
         var zfsRecv = spawn('/usr/sbin/zfs', ['receive', tmpDsName]);
         zfsRecv.stderr.on('data', function (chunk) {
             console.error('Stderr from zfs receive: %s',
@@ -1554,7 +1628,7 @@ IMGADM.prototype.updateImages = function updateImages(callback) {
             return;
         }
         var uuid = ii.manifest.uuid;
-        self.sourcesGet(uuid, function (sGetErr, imageInfo) {
+        self.sourcesGet(uuid, true, function (sGetErr, imageInfo) {
             if (sGetErr) {
                 next(sGetErr);
                 return;

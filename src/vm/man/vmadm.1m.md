@@ -173,7 +173,7 @@ tab-complete UUIDs rather than having to type them out for every command.
         You can see several examples using order, sort and selection in the
         EXAMPLES section below.
 
-      lookup [-j|-1] [field=value ...]
+      lookup [-j|-1] [-o field,field,..] [field=value ...]
 
         The lookup command is designed to help you find VMs. It takes a set of
         filter options in the same format as the list command. This means you
@@ -193,6 +193,18 @@ tab-complete UUIDs rather than having to type them out for every command.
         the -j parameter. With that flag set, the output will be a JSON array
         of VM objects containing the same JSON data as the 'get' command for
         each VM matched.
+
+        When the -j flag is passed, you can also limit the fields in the objects
+        of the output array. To do so, use the -o option. For example if you
+        use:
+
+            vmadm lookup -j -o uuid,brand,quota
+
+        the objects in the output array will only have the uuid, brand and quota
+        members. Where possible vmadm optimizes the lookups such that not
+        including fields in the output means it won't have to do the potentially
+        expensive operations to look them up. By default (without -o) all fields
+        are included in the objects.
 
         If you pass the -1 parameter, lookup should only return 1 result. If
         multiple results are matched or 0 results are matched, an error will
@@ -658,8 +670,14 @@ tab-complete UUIDs rather than having to type them out for every command.
     delegate_dataset:
 
         This property indicates whether we should delegate a ZFS dataset to an
-        OS VM. If true, the VM will get a dataset /data which it will be able
-        to manage.
+        OS VM. If true, the VM will get a dataset <zoneroot dataset>/data (by
+        default: zones/<uuid>/data) added to it. This dataset will be also be
+        mounted on /<zoneroot dataset>/data inside the zone (again by default:
+        /zones/<uuid>/data) but you can change this by setting the mountpoint
+        option on the dataset from within the zone with zfs(1M). When using
+        this option, sub-datasets can be created, snapshots can be taken and
+        many other options can be performed on this dataset from within the
+        VM.
 
         type: boolean
         vmtype: OS
@@ -740,21 +758,25 @@ tab-complete UUIDs rather than having to type them out for every command.
 
     disks.*.image_size:
 
-        The size of the image from which we will create this disk.
+        The size of the image from which we will create this disk. When neither
+        size nor image_size is passed for a disk but an image_uuid is, and that
+        image is available through imgadm, the image_size value from the
+        manifest will be set as image_size.
 
-        Important: image_size is required when you include image_uuid for a disk
-        and not allowed when you don't.
+        Important: image_size is required (unless you rely on imgadm) when you
+        include image_uuid for a disk and not allowed when you don't.
 
         type: integer (size in MiB)
         vmtype: KVM
         listable: yes (see above)
         create: yes
         update: yes (special, see description in 'update' section above)
-        default: no
+        default: no (loaded from imgadm if possible)
 
     disks.*.image_uuid:
 
-        UUID of dataset from which to clone this VM's disk.
+        UUID of dataset from which to clone this VM's disk. Note: this image's
+        UUID must show up in the 'imgadm list' output in order to be valid.
 
         type: string (UUID)
         vmtype: KVM

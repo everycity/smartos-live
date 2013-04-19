@@ -20,42 +20,115 @@ var portRE = /^[0-9]{1,5}$/;
 
 
 
-// --- Validation functions
+// --- Internal helper functions
 
 
-
-parser.yy.tagOrPortOrUUID = function tagOrPortOrUUID(lexer) {
-  if (uuidRE.exec(lexer.yytext)) {
-    return 'UUID';
+/**
+ * Translates an internal parser name (usually all one word, all caps, for
+ * brevity), to a friendlier user-facing name
+ */
+function translateParserNames(name) {
+  var translated;
+  switch (name) {
+    case '\'ALL\'':
+    case '\'ANY\'':
+    case '\'IP\'':
+    case '\'SUBNET\'':
+    case '\'TAG\'':
+    case '\'VM\'':
+    case 'WORD':
+      translated = name.toLowerCase();
+      break;
+    default:
+      translated = name;
+      break;
   }
 
-  if (portRE.exec(lexer.yytext)) {
-    if (Number(lexer.yytext) > 65536) {
-      throw new VError('Invalid port number "%s"', lexer.yytext);
-    }
-    return 'PORTNUM';
-  }
-  return 'TAGTXT';
-};
+  return translated;
+}
+
+
+
+// --- Parser extension methods
+
 
 
 parser.yy.validateIPv4address = function validateIPv4address(ip) {
   if (!validators.validateIPv4address(ip)) {
-    throw new VError('IP address "%s" is invalid', ip);
+    throw new validators.InvalidParamError('rule',
+      'IP address "%s" is invalid', ip);
   }
 };
 
 
 parser.yy.validateIPv4subnet = function validateIPv4subnet(subnet) {
   if (!validators.validateIPv4subnet(subnet)) {
-    throw new VError('Subnet "%s" is invalid (must be in CIDR format)',
-      subnet);
+    throw new validators.InvalidParamError('rule',
+      'Subnet "%s" is invalid (must be in CIDR format)', subnet);
+  }
+};
+
+
+parser.yy.validatePortNumber = function validatePortNumber(num) {
+  if (isNaN(num) || Number(num) < 1 || Number(num) > 65536) {
+    throw new validators.InvalidParamError('rule',
+      'Port number "%s" is invalid', num);
+  }
+};
+
+
+parser.yy.validateICMPcode = function validateICMPcode(num) {
+  if (isNaN(num) || Number(num) < 0 || Number(num) > 255) {
+    throw new validators.InvalidParamError('rule',
+      'ICMP code "%s" is invalid', num);
+  }
+};
+
+
+parser.yy.validateICMPtype = function validateICMPtype(num) {
+  if (isNaN(num) || Number(num) < 0 || Number(num) > 255) {
+    throw new validators.InvalidParamError('rule',
+      'ICMP type "%s" is invalid', num);
+  }
+};
+
+
+parser.yy.validateUUID = function validateUUID(text) {
+  if (!uuidRE.test(text)) {
+    throw new validators.InvalidParamError('rule',
+      'UUID "%s" is invalid', text);
   }
 };
 
 
 parser.yy.parseError = function parseError(str, details) {
-  var err = new Error(str);
+  var err;
+  if (details.token === null) {
+    var pre = this.yy.lexer.pastInput();
+    var post = this.yy.lexer.upcomingInput();
+    err = new validators.InvalidParamError('rule',
+      'Error at character %d: \'%s\', found: unexpected text',
+      pre.length, post);
+    err.details = details;
+    throw err;
+  }
+
+  if (details.text === '') {
+    err = new validators.InvalidParamError('rule',
+      'Error at character 0: \'\', expected: \'FROM\', found: empty string');
+    err.details = details;
+    throw err;
+  }
+
+  err = new validators.InvalidParamError('rule',
+    'Error at character %d: \'%s\', expected: %s, found: %s',
+    details.loc.last_column,
+    details.text,
+    details.expected.map(function (exp) {
+      return translateParserNames(exp);
+    }).join(', '),
+    translateParserNames(details.token));
+
   err.details = details;
   throw err;
 };
@@ -68,8 +141,8 @@ parser.yy.parseError = function parseError(str, details) {
 
 function parse() {
   return parser.parse.apply(parser, arguments);
-  // XXX: more validation here, now that we have all of the args
 }
+
 
 
 module.exports = {
@@ -80,5 +153,6 @@ module.exports = {
   generateVersion: rule.generateVersion,
   parse: parse,
   PROTOCOLS: ['tcp', 'udp', 'icmp'],
-  TARGET_TYPES: rule.TARGET_TYPES
+  TARGET_TYPES: rule.TARGET_TYPES,
+  validators: validators
 };

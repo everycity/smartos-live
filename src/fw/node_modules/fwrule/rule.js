@@ -29,7 +29,8 @@ var mod_uuid = require('node-uuid');
 var parser = require('./parser');
 var sprintf = require('extsprintf').sprintf;
 var util = require('util');
-var VError = require('verror').VError;
+var validators = require('./validators');
+var verror = require('verror');
 
 
 
@@ -39,8 +40,6 @@ var VError = require('verror').VError;
 
 var DIRECTIONS = ['to', 'from'];
 var TARGET_TYPES = ['wildcard', 'ip', 'subnet', 'tag', 'vm'];
-var UUID_REGEX =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 
 
@@ -69,6 +68,22 @@ function forEachTarget(obj, callback) {
 }
 
 
+/**
+ * Sorts a list of ICMP types (with optional codes)
+ */
+function icmpTypeSort(types) {
+  return types.map(function (type) {
+    return type.toString().split(':');
+  }).sort(function (a, b) {
+    var aTot = (Number(a[0]) << 8) + (a.length === 1 ? 0 : Number(a[1]));
+    var bTot = (Number(b[0]) << 8) + (a.length === 1 ? 0 : Number(b[1]));
+    return aTot - bTot;
+  }).map(function (typeArr) {
+    return typeArr.join(':');
+  });
+}
+
+
 
 // --- Firewall object and methods
 
@@ -78,31 +93,27 @@ function forEachTarget(obj, callback) {
  * Firewall rule constructor
  */
 function FwRule(data) {
+  var errs = [];
+  var parsed;
+
+  // -- validation --
+
   if (!data.rule && !data.parsed) {
-    throw new Error('No rule specified!');
+    errs.push(new validators.InvalidParamError('rule', 'No rule specified!'));
+  } else {
+    try {
+      parsed = data.parsed || parser.parse(data.rule);
+    } catch (err) {
+      errs.push(err);
+    }
   }
 
-  var parsed = data.parsed || parser.parse(data.rule);
-  // XXX: more validation here, now that we have all of the args
-  var d;
-  var dir;
-
-  this.enabled = data.hasOwnProperty('enabled') ? data.enabled : false;
-  this.ports = parsed.ports;
-  this.action = parsed.action;
-  this.protocol = parsed.protocol;
-  this.from = {};
-  this.to = {};
-
-  this.ips = {};
-  this.tags = {};
-  this.vms = {};
-  this.subnets = {};
-
-  if (data.uuid) {
-    if (!UUID_REGEX.test(data.uuid)) {
-      throw new VError('Invalid rule UUID "%s"', data.uuid);
+  if (data.hasOwnProperty('uuid')) {
+    if (!validators.validateUUID(data.uuid)) {
+      errs.push(new validators.InvalidParamError('uuid',
+            'Invalid rule UUID "%s"', data.uuid));
     }
+
     this.uuid = data.uuid;
   } else {
     this.uuid = mod_uuid.v4();
@@ -110,12 +121,61 @@ function FwRule(data) {
 
   this.version = data.version || generateVersion();
 
-  if (data.owner_uuid) {
-    if (!UUID_REGEX.test(data.owner_uuid)) {
-      throw new VError('Invalid owner UUID "%s"', data.owner_uuid);
+  if (data.hasOwnProperty('owner_uuid')) {
+    if (!validators.validateUUID(data.owner_uuid)) {
+      errs.push(new validators.InvalidParamError('owner_uuid',
+        'Invalid owner UUID "%s"', data.owner_uuid));
     }
     this.owner_uuid = data.owner_uuid;
   }
+
+  if (data.hasOwnProperty('enabled')) {
+    if (typeof (data.enabled) !== 'boolean' && data.enabled !== 'true'
+      && data.enabled !== 'false') {
+      errs.push(new validators.InvalidParamError('enabled',
+        'enabled must be true or false'));
+    }
+
+    this.enabled = data.enabled;
+  } else {
+    this.enabled = false;
+  }
+
+  if (errs.length !== 0) {
+    if (errs.length === 1) {
+      throw errs[0];
+    }
+
+    throw new verror.MultiError(errs);
+  }
+
+  // -- translate into the internal rule format --
+
+  var d;
+  var dir;
+
+  this.action = parsed.action;
+  this.protocol = parsed.protocol.name;
+
+  if (this.protocol === 'icmp') {
+    this.types = icmpTypeSort(parsed.protocol.targets);
+    this.protoTargets = this.types;
+  } else {
+    this.ports = parsed.protocol.targets.sort(function (a, b) {
+      return Number(a) - Number(b);
+    });
+    this.protoTargets = this.ports;
+  }
+
+  this.from = {};
+  this.to = {};
+
+  this.allVMs = false;
+  this.ips = {};
+  this.tags = {};
+  this.vms = {};
+  this.subnets = {};
+  this.wildcards = {};
 
   var dirs = {
     'to': {},
@@ -153,6 +213,11 @@ function FwRule(data) {
   this.tags = Object.keys(this.tags).sort();
   this.vms = Object.keys(this.vms).sort();
   this.subnets = Object.keys(this.subnets).sort();
+  this.wildcards = Object.keys(this.wildcards).sort();
+
+  if (this.wildcards.length !== 0 && this.wildcards.indexOf('vmall') !== -1) {
+    this.allVMs = true;
+  }
 }
 
 
@@ -160,16 +225,27 @@ function FwRule(data) {
  * Returns the internal representation of the rule
  */
 FwRule.prototype.raw = function () {
-  return {
+  var raw = {
     'action': this.action,
     'enabled': this.enabled,
     'from': this.from,
-    'ports': this.ports,
     'protocol': this.protocol,
     'to': this.to,
     'uuid': this.uuid,
     'version': this.version
   };
+
+  if (this.owner_uuid) {
+    raw.owner_uuid = this.owner_uuid;
+  }
+
+  if (this.protocol === 'icmp') {
+    raw.types = this.types;
+  } else {
+    raw.ports = this.ports;
+  }
+
+  return raw;
 };
 
 
@@ -196,6 +272,7 @@ FwRule.prototype.serialize = function () {
  * Returns the text of the rule
  */
 FwRule.prototype.text = function () {
+  var protoTxt;
   var targets = {
     from: [],
     to: []
@@ -205,13 +282,32 @@ FwRule.prototype.text = function () {
     for (var i in arr) {
       var txt = util.format('%s %s', type, arr[i]);
       if (type == 'wildcard') {
-        txt = arr[i];
+        txt = arr[i] === 'vmall' ? 'all vms' : arr[i];
       }
       targets[dir].push(txt);
     }
   });
 
-  return util.format('FROM %s%s%s TO %s%s%s %s %s %sPORT %s%s',
+  // Protocol-specific text: different for ICMP rather than TCP/UDP
+  if (this.protocol === 'icmp') {
+    protoTxt = util.format('%sTYPE %s%s',
+      this.types.length > 1 ? '(' : '',
+      this.types.map(function (type) {
+        return type.toString().split(':');
+      }).map(function (code) {
+        return code[0] + (code.length === 1 ? '' : ' CODE ' + code[1]);
+      }).join(' AND TYPE '),
+      this.types.length > 1 ? ')' : ''
+    );
+  } else {
+    protoTxt = util.format('%sPORT %s%s',
+      this.ports.length > 1 ? '(' : '',
+      this.ports.join(' AND PORT '),
+      this.ports.length > 1 ? ')' : ''
+    );
+  }
+
+  return util.format('FROM %s%s%s TO %s%s%s %s %s',
       targets.from.length > 1 ? '(' : '',
       targets.from.join(' OR '),
       targets.from.length > 1 ? ')' : '',
@@ -220,9 +316,7 @@ FwRule.prototype.text = function () {
       targets.to.length > 1 ? ')' : '',
       this.action.toUpperCase(),
       this.protocol.toLowerCase(),
-      this.ports.length > 1 ? '(' : '',
-      this.ports.sort().join(' AND PORT '),
-      this.ports.length > 1 ? ')' : ''
+      protoTxt
   );
 };
 

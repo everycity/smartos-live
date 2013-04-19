@@ -149,3 +149,10 @@ set pidmax=99999
 * ixgbe: allow for unsupported SFP modules
 *
 set ixgbe:ixgbe_allow_unsupported_sfp=1
+
+* The traditional (and essentially entirely brain dead) cfgadm(1M)-centric
+* model of hotpluggin' appears to be basically unnecessary.  This tunable
+* enables the system to create device nodes for newly inserted devices
+* automatically.  See: usr/src/uts/common/io/sata/impl/sata.c:97
+*
+set sata:sata_auto_online=1

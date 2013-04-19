@@ -62,6 +62,7 @@ exports['add: no rules or VMs'] = function (t) {
   });
 };
 
+
 exports['add / update: vm to IP: BLOCK'] = function (t) {
   var vm = helpers.generateVM();
   var payload = {
@@ -98,14 +99,14 @@ exports['add / update: vm to IP: BLOCK'] = function (t) {
         rules: [ payload.rules[0] ]
       }, 'rules returned');
 
-      var zoneRules = helpers.getZoneRulesWritten();
+      var zoneRules = helpers.zoneIPFconfigs();
       var expRules = helpers.defaultZoneRules(vm.uuid);
       createSubObjects(expRules, vm.uuid, 'out', 'block', 'tcp',
         {
           '10.99.99.254': [ 8080 ]
         });
 
-      t.deepEqual(zoneRules, expRules, 'firewall rules correct');
+      t.deepEqual(zoneRules, expRules, 'zone ipf.conf files correct');
 
       var vmsEnabled = {};
       vmsEnabled[vm.uuid] = true;
@@ -154,7 +155,7 @@ exports['add / update: vm to IP: BLOCK'] = function (t) {
         rules: [ updatePayload.rules[0] ]
       }, 'rules returned');
 
-      var zoneRules = helpers.getZoneRulesWritten();
+      var zoneRules = helpers.zoneIPFconfigs();
       var expRules = helpers.defaultZoneRules(vm.uuid);
       createSubObjects(expRules, vm.uuid, 'out', 'block', 'tcp',
         {
@@ -162,7 +163,7 @@ exports['add / update: vm to IP: BLOCK'] = function (t) {
           '10.88.88.2': [ 8080 ]
         });
 
-      t.deepEqual(zoneRules, expRules, 'firewall rules correct');
+      t.deepEqual(zoneRules, expRules, 'zone ipf.conf files correct');
 
       cb();
     });
@@ -173,6 +174,24 @@ exports['add / update: vm to IP: BLOCK'] = function (t) {
   }, function (cb) {
     helpers.fwListEquals(fw, t, [expRule], cb);
 
+  }, function (cb) {
+    helpers.fwRulesEqual({
+      fw: fw,
+      t: t,
+      rules: [ expRule ],
+      vm: vm,
+      vms: [vm]
+    }, cb);
+
+  }, function (cb) {
+    // Disabling and re-enabling the firewall should have no effect on the
+    // zone rules
+    helpers.testEnableDisable({
+      fw: fw,
+      t: t,
+      vm: vm,
+      vms: [vm]
+    }, cb);
   }, function (cb) {
     // Delete the rule - the firewall should remain running, but only the
     // default rules should remain
@@ -190,10 +209,10 @@ exports['add / update: vm to IP: BLOCK'] = function (t) {
 
       t.deepEqual(res, {
         vms: [ vm.uuid ],
-        rules: [ expRule.uuid ]
+        rules: [ expRule ]
       }, 'results returned');
 
-      var zoneRules = helpers.getZoneRulesWritten();
+      var zoneRules = helpers.zoneIPFconfigs();
 
       t.deepEqual(zoneRules, helpers.defaultZoneRules(vm.uuid),
         'only default firewall rules left in zone');
@@ -205,6 +224,15 @@ exports['add / update: vm to IP: BLOCK'] = function (t) {
 
       cb();
     });
+
+  }, function (cb) {
+    helpers.fwRulesEqual({
+      fw: fw,
+      t: t,
+      rules: [ ],
+      vm: vm,
+      vms: [vm]
+    }, cb);
   }
 
   ], function () {
@@ -243,9 +271,11 @@ exports['add / update: vm to IP: ALLOW'] = function (t) {
         vms: [ vm.uuid ]
       }, 'rules returned');
 
-      var expRules = helpers.defaultZoneRules(vm.uuid);
-      t.deepEqual(helpers.getZoneRulesWritten(), expRules,
-        'firewall rules correct');
+      // Outbound allow rules from a VM are a no-op (since the default
+      // outbound policy is allow), so no explicit rule will appear in
+      // the zone's ipf.conf:
+      t.deepEqual(helpers.zoneIPFconfigs(),
+        helpers.defaultZoneRules(vm.uuid), 'ipf rules correct');
 
       var vmsEnabled = {};
       vmsEnabled[vm.uuid] = true;
@@ -259,6 +289,15 @@ exports['add / update: vm to IP: ALLOW'] = function (t) {
 
   }, function (cb) {
     helpers.fwListEquals(fw, t, [expRule], cb);
+
+  }, function (cb) {
+    helpers.fwRulesEqual({
+      fw: fw,
+      t: t,
+      rules: [expRule],
+      vm: vm,
+      vms: [vm]
+    }, cb);
   }
 
   ], function () {
@@ -303,7 +342,7 @@ exports['add: tag to IP'] = function (t) {
         rules: [ payload.rules[0] ]
       }, 'rules returned');
 
-      var zoneRules = helpers.getZoneRulesWritten();
+      var zoneRules = helpers.zoneIPFconfigs();
       var expRules = helpers.defaultZoneRules(vm1.uuid);
       createSubObjects(expRules, vm1.uuid, 'out', 'block', 'tcp',
         {
@@ -311,7 +350,7 @@ exports['add: tag to IP'] = function (t) {
         });
       expRules[vm2.uuid] = expRules[vm1.uuid];
 
-      t.deepEqual(zoneRules, expRules, 'firewall rules correct');
+      t.deepEqual(zoneRules, expRules, 'zone ipf.conf files correct');
 
       var vmsEnabled = {};
       vmsEnabled[vm1.uuid] = true;
@@ -330,6 +369,24 @@ exports['add: tag to IP'] = function (t) {
 
   }, function (cb) {
     helpers.fwListEquals(fw, t, [expRule], cb);
+
+  }, function (cb) {
+    helpers.fwRulesEqual({
+      fw: fw,
+      t: t,
+      rules: [expRule],
+      vm: vm1,
+      vms: [vm1, vm2]
+    }, cb);
+
+  }, function (cb) {
+    helpers.fwRulesEqual({
+      fw: fw,
+      t: t,
+      rules: [expRule],
+      vm: vm2,
+      vms: [vm1, vm2]
+    }, cb);
   }
   ], function () {
       t.done();
@@ -389,8 +446,8 @@ exports['add: tag to subnet'] = function (t) {
         });
       expRules[vm2.uuid] = expRules[vm1.uuid];
 
-      t.deepEqual(helpers.getZoneRulesWritten(), expRules,
-        'firewall rules correct');
+      t.deepEqual(helpers.zoneIPFconfigs(), expRules,
+        'zone ipf.conf files correct');
 
       var vmsEnabled = {};
       vmsEnabled[vm1.uuid] = true;
@@ -414,6 +471,32 @@ exports['add: tag to subnet'] = function (t) {
 
   }, function (cb) {
     helpers.fwListEquals(fw, t, [rule1, rule2].sort(helpers.uuidSort), cb);
+
+  }, function (cb) {
+    helpers.fwRulesEqual({
+      fw: fw,
+      t: t,
+      rules: [rule1, rule2],
+      vm: vm1,
+      vms: [vm1, vm2]
+    }, cb);
+
+  }, function (cb) {
+    helpers.fwRulesEqual({
+      fw: fw,
+      t: t,
+      rules: [rule1, rule2],
+      vm: vm2,
+      vms: [vm1, vm2]
+    }, cb);
+
+  }, function (cb) {
+    helpers.testEnableDisable({
+      fw: fw,
+      t: t,
+      vm: vm1,
+      vms: [vm1, vm2]
+    }, cb);
   }
   ], function () {
       t.done();
@@ -477,8 +560,8 @@ exports['add: vm to subnet'] = function (t) {
           '10.99.99.0/24': [ 80 ]
         });
 
-      t.deepEqual(helpers.getZoneRulesWritten(), expRules,
-        'firewall rules correct');
+      t.deepEqual(helpers.zoneIPFconfigs(), expRules,
+        'zone ipf.conf files correct');
 
       var vmsEnabled = {};
       vmsEnabled[vm1.uuid] = true;
@@ -501,7 +584,160 @@ exports['add: vm to subnet'] = function (t) {
 
   }, function (cb) {
     helpers.fwListEquals(fw, t, [rule1, rule2].sort(helpers.uuidSort), cb);
+
+  }, function (cb) {
+    helpers.fwRulesEqual({
+      fw: fw,
+      t: t,
+      rules: [rule1, rule2],
+      vm: vm1,
+      vms: [vm1, vm2]
+    }, cb);
+
+  }, function (cb) {
+    helpers.fwRulesEqual({
+      fw: fw,
+      t: t,
+      rules: [ ],
+      vm: vm2,
+      vms: [vm1, vm2]
+    }, cb);
   }
+  ], function () {
+      t.done();
+  });
+};
+
+
+exports['enable / disable rule'] = function (t) {
+  var vm = helpers.generateVM();
+  var payload = {
+    rules: [
+      {
+        rule: util.format('FROM vm %s TO ip 192.168.5.2 BLOCK tcp '
+                + 'PORT 25', vm.uuid),
+        enabled: false
+      }
+    ],
+    vms: [vm]
+  };
+
+  var expRule = clone(payload.rules[0]);
+  var vmsEnabled = {};
+  var zoneIPFconfs;
+
+  async.series([
+  function (cb) {
+    fw.add(payload, function (err, res) {
+      t.ifError(err);
+      if (err) {
+        return cb();
+      }
+
+      helpers.fillInRuleBlanks(res.rules, expRule);
+
+      t.deepEqual(res, {
+        rules: [ expRule ],
+        vms: [ vm.uuid ]
+      }, 'rules returned');
+
+      zoneIPFconfs = helpers.defaultZoneRules(vm.uuid);
+      t.deepEqual(helpers.zoneIPFconfigs(), zoneIPFconfs,
+        'zone ipf.conf files correct');
+
+      vmsEnabled[vm.uuid] = true;
+      t.deepEqual(helpers.getIPFenabled(), vmsEnabled, 'ipf enabled in VMs');
+
+      cb();
+    });
+
+  }, function (cb) {
+    helpers.fwGetEquals(fw, t, expRule, cb);
+
+  }, function (cb) {
+    helpers.fwListEquals(fw, t, [expRule], cb);
+
+  }, function (cb) {
+    helpers.fwRulesEqual({
+      fw: fw,
+      t: t,
+      rules: [expRule],
+      vm: vm,
+      vms: [vm]
+    }, cb);
+
+  }, function (cb) {
+    // Update the rule - it should still not affect the VM
+    var updatePayload = {
+      rules: [
+        {
+          uuid: expRule.uuid,
+          rule: util.format('FROM vm %s TO ip 192.168.5.2 BLOCK tcp '
+                  + 'PORT 26', vm.uuid)
+        }
+      ],
+      vms: [vm]
+    };
+    expRule.rule = updatePayload.rules[0].rule;
+
+    fw.update(updatePayload, function (err, res) {
+      t.ifError(err);
+      if (err) {
+        return cb();
+      }
+
+      expRule.version = res.rules[0].version;
+      t.deepEqual(res, {
+        rules: [ expRule ],
+        vms: [ vm.uuid ]
+      }, 'rules returned');
+
+      t.deepEqual(helpers.zoneIPFconfigs(), zoneIPFconfs,
+        'zone ipf.conf files still the same');
+
+      t.deepEqual(helpers.getIPFenabled(), vmsEnabled, 'ipf still enabled');
+
+      cb();
+    });
+
+  }, function (cb) {
+    // Add an enabled rule - disabled rule should still not affect the vm
+    var addPayload = {
+      rules: [
+        {
+          rule: 'FROM any TO all vms ALLOW tcp PORT 33',
+          enabled: true
+        }
+      ],
+      vms: [vm]
+    };
+    var expRule2 = clone(addPayload.rules[0]);
+
+    fw.add(addPayload, function (err, res) {
+      t.ifError(err);
+      if (err) {
+        return cb();
+      }
+
+      helpers.fillInRuleBlanks(res.rules, expRule2);
+      t.deepEqual(res, {
+        rules: [ expRule2 ],
+        vms: [ vm.uuid ]
+      }, 'rules returned');
+
+      createSubObjects(zoneIPFconfs, vm.uuid, 'in', 'pass', 'tcp',
+        {
+          any: [ 33 ]
+        });
+      t.deepEqual(helpers.zoneIPFconfigs(), zoneIPFconfs,
+        'zone ipf.conf files still the same');
+
+      t.deepEqual(helpers.getIPFenabled(), vmsEnabled, 'ipf still enabled');
+
+      cb();
+    });
+  }
+
   ], function () {
       t.done();
   });

@@ -4,6 +4,8 @@
  * mocks for tests
  */
 
+var assert = require('assert-plus');
+var clone = require('clone');
 var fwrule = require('fwrule');
 var mod_obj = require('../../lib/util/obj');
 var mocks = require('./mocks');
@@ -17,9 +19,9 @@ var createSubObjects = mod_obj.createSubObjects;
 
 
 
-var DEBUG_FILES = false;
+var DEBUG_FILES = process.env.PRINT_IPF_CONFS;
 var IP_NUM = 2;
-
+var SYN_LINE = 'pass out quick proto tcp from any to any flags S/SA keep state';
 
 
 // --- Internal functions
@@ -51,8 +53,8 @@ function endsWith(str, suffix)
 function defaultZoneRules(uuids) {
   var toReturn = {};
   if (!uuids) {
-    createSubObjects(toReturn, 'out', 'pass', { all: true });
-    createSubObjects(toReturn, 'in', 'block', { all: true });
+    createSubObjects(toReturn, 'out', 'pass', { any: 'any' });
+    createSubObjects(toReturn, 'in', 'block', { any: 'any' });
     return toReturn;
   }
 
@@ -61,8 +63,8 @@ function defaultZoneRules(uuids) {
   }
 
   uuids.forEach(function (uuid) {
-    createSubObjects(toReturn, uuid, 'out', 'pass', { all: true });
-    createSubObjects(toReturn, uuid, 'in', 'block', { all: true });
+    createSubObjects(toReturn, uuid, 'out', 'pass', { any: 'any' });
+    createSubObjects(toReturn, uuid, 'in', 'block', { any: 'any' });
   });
 
   return toReturn;
@@ -129,7 +131,9 @@ function fwGetEquals(fw, t, rule, callback) {
 function fwListEquals(fw, t, rules, callback) {
   fw.list({ }, function (err, res) {
     t.ifError(err);
-    t.deepEqual(res.sort(uuidSort), rules.sort(uuidSort),
+
+    // clone the input rules in case order is important to the caller:
+    t.deepEqual(res.sort(uuidSort), clone(rules).sort(uuidSort),
       'rule list is equal');
     return callback();
   });
@@ -137,10 +141,86 @@ function fwListEquals(fw, t, rules, callback) {
 
 
 /**
- * Extracts the firewall data from the mock fs module and presents it in
- * a hash
+ * Does a fw.rules() for a VM and a deepEqual to confirm the retrieved
+ * list is the same
  */
-function getZoneRulesWritten() {
+function fwRulesEqual(opts, callback) {
+  assert.object(opts, 'opts');
+  assert.object(opts.fw, 'opts.fw');
+  assert.arrayOfObject(opts.rules, 'opts.rules');
+  assert.object(opts.t, 'opts.t');
+  assert.object(opts.vm, 'opts.vm');
+  assert.arrayOfObject(opts.vms, 'opts.vms');
+
+  opts.fw.rules({ vm: opts.vm.uuid, vms: opts.vms }, function (err, res) {
+    opts.t.ifError(err);
+    if (err) {
+      return callback();
+    }
+
+    // clone the input rules in case order is important to the caller:
+    opts.t.deepEqual(res.sort(uuidSort), clone(opts.rules).sort(uuidSort),
+      'fw.rules() correct');
+
+    return callback();
+  });
+}
+
+
+function testEnableDisable(opts, callback) {
+  assert.object(opts, 'opts');
+  assert.object(opts.fw, 'opts.fw');
+  assert.object(opts.t, 'opts.t');
+  assert.object(opts.vm, 'opts.vm');
+  assert.arrayOfObject(opts.vms, 'opts.vms');
+
+  var vmsEnabled;
+  var rvmsBefore = remoteVMsOnDisk();
+  var rulesBefore = rulesOnDisk();
+  var t = opts.t;
+  var zoneRules = zoneIPFconfigs();
+
+  opts.fw.disable({ vm: opts.vm }, function (err, res) {
+    t.ifError(err);
+    if (err) {
+      return callback(err);
+    }
+
+    // Disabling the firewall should have moved ipf.conf:
+    t.deepEqual(zoneIPFconfigs()[opts.vm.uuid], undefined,
+      'no firewall rules after disable');
+
+    vmsEnabled = getIPFenabled();
+    t.deepEqual(vmsEnabled[opts.vm.uuid], false, 'firewall not enabled');
+
+    opts.fw.enable({ vm: opts.vm, vms: opts.vms }, function (err2, res2) {
+      t.ifError(err2);
+      if (err2) {
+        return callback(err2);
+      }
+
+      t.deepEqual(zoneIPFconfigs(), zoneRules,
+        'firewall rules the same after enable');
+
+      vmsEnabled = getIPFenabled();
+      t.deepEqual(vmsEnabled[opts.vm.uuid], true, 'firewall enabled');
+
+      t.deepEqual(remoteVMsOnDisk(), rvmsBefore,
+        'remote VMs on disk the same');
+
+      t.deepEqual(rulesOnDisk(), rulesBefore, 'rules on disk the same');
+
+      return callback();
+    });
+  });
+}
+
+
+/**
+ * Returns the ipf.conf data for all zones from the mock fs module as a
+ * an object keyed by zone UUID
+ */
+function zoneIPFconfigs() {
   var root = mocks.values.fs;
   var firewalls = {};
 
@@ -153,7 +233,7 @@ function getZoneRulesWritten() {
     }
 
     if (DEBUG_FILES) {
-      console.log('%s:\n--', dir);
+      console.log('%s:\n+-', dir);
     }
     root[dir]['ipf.conf'].split('\n').forEach(function (l) {
       if (DEBUG_FILES) {
@@ -171,15 +251,40 @@ function getZoneRulesWritten() {
       var action = tok[0];
       var d = tok[1];
 
-      if (l == 'block in all' || l == 'pass out all keep state') {
+      if (l === 'block in all'
+        || l === SYN_LINE
+        || l === 'pass out quick proto icmp from any to any keep state'
+        || /^pass out proto \w+ from any to any/.test(l)) {
         var act = createSubObjects(firewalls, zone, d, action);
-        act.all = true;
+        act.any = 'any';
         return;
       }
 
       var proto = tok[4];
-      var dest = action == 'block' ? tok[8] : tok[6];
-      var port = Number(tok[11]);
+      var dest = action === 'block' ? tok[8] : tok[6];
+      var port;
+      if (proto === 'icmp') {
+        /* JSSTYLED */
+        port = l.match(/icmp-type (\d+)/)[1];
+        /* JSSTYLED */
+        var code = l.match(/code (\d+)/);
+        if (code) {
+          port = port + ':' + code[1];
+        }
+      } else {
+        var portMatch = l.match(/port = (\d+)/);
+        if (portMatch) {
+          port = portMatch[1];
+        } else {
+          port = 'all';
+        }
+      }
+
+      // block out quick proto tcp to any port = 8080
+      if (tok[6] === 'any' && tok.length < 12) {
+        dest = 'any';
+      }
+
       // console.log('%s > %s %s %s %s %s', zone, action, d, proto, dest, port);
 
       var dests = createSubObjects(firewalls, zone, d, action, proto);
@@ -194,7 +299,7 @@ function getZoneRulesWritten() {
     });
 
     if (DEBUG_FILES) {
-      console.log('--');
+      console.log('+-');
     }
   }
 
@@ -213,6 +318,15 @@ function getIPFenabled() {
     res[z] = ipfZones[z].enabled || false;
   }
   return res;
+}
+
+
+/**
+ * Returns an easily identifiable UUID based on the number
+ */
+function uuidNum(num) {
+  return '00000000-0000-0000-0000-0000000000'
+    + (Number(num) < 9 ? '0' + num : num);
 }
 
 
@@ -300,11 +414,11 @@ function rulesOnDisk(fw) {
  */
 function sortRes(res) {
   if (res.hasOwnProperty('vms')) {
-    res.vms = res.vms.sort();
+    res.vms.sort();
   }
 
   if (res.hasOwnProperty('rules')) {
-    res.rules = res.rules.sort(uuidSort);
+    res.rules.sort(uuidSort);
   }
 
   return res;
@@ -326,11 +440,14 @@ module.exports = {
   findRuleInList: findRuleInList,
   fwGetEquals: fwGetEquals,
   fwListEquals: fwListEquals,
+  fwRulesEqual: fwRulesEqual,
   getIPFenabled: getIPFenabled,
-  getZoneRulesWritten: getZoneRulesWritten,
   generateVM: generateVM,
-  sortRes: sortRes,
   remoteVMsOnDisk: remoteVMsOnDisk,
   rulesOnDisk: rulesOnDisk,
-  uuidSort: uuidSort
+  sortRes: sortRes,
+  testEnableDisable: testEnableDisable,
+  uuidNum: uuidNum,
+  uuidSort: uuidSort,
+  zoneIPFconfigs: zoneIPFconfigs
 };

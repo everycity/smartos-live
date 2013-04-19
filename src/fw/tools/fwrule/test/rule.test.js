@@ -9,6 +9,12 @@ var util = require('util');
 
 
 
+// Set this to any of the exports in this file to only run that test,
+// plus setup and teardown
+var runOne;
+
+
+
 exports['all target types'] = function (t) {
   var ips = ['192.168.1.1', '10.2.0.3'];
   var vms = ['9a343ca8-b42a-4a27-a9c5-800f57d1e8ed',
@@ -52,6 +58,113 @@ exports['all target types'] = function (t) {
   t.deepEqual(rule.raw(), raw, 'rule.raw()');
   t.deepEqual(rule.from, raw.from, 'rule.from');
   t.deepEqual(rule.to, raw.to, 'rule.to');
+  t.ok(!rule.allVMs, 'rule.allVMs');
+
+  t.done();
+};
+
+
+exports['any'] = function (t) {
+  var ip = '192.168.3.2';
+  var vm = '8a343ca8-b42a-4a27-a9c5-800f57d1e8ed';
+  var tag = 'tag3';
+  var subnet = '192.168.0.0/16';
+
+  var ruleTxt = util.format(
+    'FROM (ip %s OR subnet %s OR tag %s OR vm %s) TO any ALLOW tcp PORT 80',
+    ip, subnet, tag, vm);
+
+  var rule = fwrule.create({
+    rule: ruleTxt,
+    enabled: true,
+    version: fwrule.generateVersion()
+  });
+
+  var raw = {
+    from: {
+      ips: [ip],
+      subnets: [subnet],
+      vms: [vm],
+      tags: [tag],
+      wildcards: []
+    },
+    to: {
+      ips: [],
+      subnets: [],
+      vms: [],
+      tags: [],
+      wildcards: ['any']
+    },
+    enabled: true,
+    ports: [ 80 ],
+    action: 'allow',
+    protocol: 'tcp',
+    uuid: rule.uuid,
+    version: rule.version
+  };
+
+  t.deepEqual(rule.raw(), raw, 'rule.raw()');
+  t.deepEqual(rule.from, raw.from, 'rule.from');
+  t.deepEqual(rule.to, raw.to, 'rule.to');
+  t.ok(!rule.allVMs, 'rule.allVMs');
+
+  t.deepEqual(rule.serialize(), {
+    enabled: true,
+    rule: ruleTxt,
+    uuid: rule.uuid,
+    version: rule.version
+  }, 'rule.serialize()');
+
+  t.done();
+};
+
+
+exports['all vms'] = function (t) {
+  var ip = '192.168.3.2';
+
+  var ruleTxt = util.format('FROM ip %s TO all vms ALLOW tcp PORT 80', ip);
+
+  var rule = fwrule.create({
+    rule: ruleTxt,
+    enabled: true,
+    version: fwrule.generateVersion()
+  });
+
+  var raw = {
+    from: {
+      ips: [ip],
+      subnets: [],
+      vms: [],
+      tags: [],
+      wildcards: []
+    },
+    to: {
+      ips: [],
+      subnets: [],
+      vms: [],
+      tags: [],
+      wildcards: ['vmall']
+    },
+    enabled: true,
+    ports: [ 80 ],
+    action: 'allow',
+    protocol: 'tcp',
+    uuid: rule.uuid,
+    version: rule.version
+  };
+
+  t.deepEqual(rule.raw(), raw, 'rule.raw()');
+  t.deepEqual(rule.from, raw.from, 'rule.from');
+  t.deepEqual(rule.to, raw.to, 'rule.to');
+  t.deepEqual(rule.wildcards, raw.to.wildcards, 'rule.wildcards');
+  t.ok(rule.allVMs, 'rule.allVMs');
+
+  t.deepEqual(rule.serialize(), {
+    enabled: true,
+    rule: ruleTxt,
+    uuid: rule.uuid,
+    version: rule.version
+  }, 'rule.serialize()');
 
   t.done();
 };
@@ -88,13 +201,13 @@ exports['tags'] = function (t) {
   };
   t.deepEqual(rule.raw(), raw, 'rule.raw()');
 
-  var serialized = rule.serialize();
-  t.deepEqual(serialized, {
+  t.deepEqual(rule.serialize(), {
     enabled: false,
     rule: ruleTxt,
     uuid: rule.uuid,
     version: rule.version
   }, 'rule.serialize()');
+  t.ok(!rule.allVMs, 'rule.allVMs');
 
   t.done();
 };
@@ -119,8 +232,269 @@ exports['multiple ports and owner_uuid'] = function (t) {
       tags: [],
       wildcards: []
     },
+    owner_uuid: inRule.owner_uuid,
     protocol: 'tcp',
     ports: [ 1002, 1052 ],
+    to: {
+      ips: [],
+      vms: [],
+      subnets: [],
+      tags: [ 'tag2' ],
+      wildcards: []
+    },
+    uuid: rule.uuid,
+    version: rule.version
+  };
+
+  t.deepEqual(rule.raw(), raw, 'rule.raw()');
+  t.deepEqual(rule.ports, raw.ports, 'rule.ports');
+  t.deepEqual(rule.protoTargets, raw.ports, 'rule.protoTargets');
+
+  t.deepEqual(rule.serialize(), {
+    enabled: true,
+    owner_uuid: inRule.owner_uuid,
+    rule: inRule.rule,
+    uuid: rule.uuid,
+    version: rule.version
+  }, 'rule.serialize()');
+
+  t.done();
+};
+
+
+exports['icmp'] = function (t) {
+  var vm = '8a343ca8-b42a-4a27-a9c5-800f57d1e8ed';
+
+  var ruleTxt = util.format(
+    'FROM any TO vm %s ALLOW icmp TYPE 8', vm);
+
+  var rule = fwrule.create({
+    rule: ruleTxt,
+    enabled: true,
+    version: fwrule.generateVersion()
+  });
+
+  var raw = {
+    from: {
+      ips: [],
+      subnets: [],
+      vms: [],
+      tags: [],
+      wildcards: ['any']
+    },
+    to: {
+      ips: [],
+      subnets: [],
+      vms: [vm],
+      tags: [],
+      wildcards: []
+    },
+    enabled: true,
+    types: [ '8' ],
+    action: 'allow',
+    protocol: 'icmp',
+    uuid: rule.uuid,
+    version: rule.version
+  };
+
+  t.deepEqual(rule.raw(), raw, 'rule.raw()');
+  t.deepEqual(rule.from, raw.from, 'rule.from');
+  t.deepEqual(rule.to, raw.to, 'rule.to');
+  t.ok(!rule.allVMs, 'rule.allVMs');
+
+  t.deepEqual(rule.serialize(), {
+    enabled: true,
+    rule: ruleTxt,
+    uuid: rule.uuid,
+    version: rule.version
+  }, 'rule.serialize()');
+
+  t.done();
+};
+
+
+exports['icmp with code'] = function (t) {
+  var vm = '8a343ca8-b42a-4a27-a9c5-800f57d1e8ed';
+
+  var ruleTxt = util.format(
+    'FROM any TO vm %s ALLOW icmp TYPE 8 CODE 0', vm);
+
+  var rule = fwrule.create({
+    rule: ruleTxt,
+    enabled: true,
+    version: fwrule.generateVersion()
+  });
+
+  var raw = {
+    from: {
+      ips: [],
+      subnets: [],
+      vms: [],
+      tags: [],
+      wildcards: ['any']
+    },
+    to: {
+      ips: [],
+      subnets: [],
+      vms: [vm],
+      tags: [],
+      wildcards: []
+    },
+    enabled: true,
+    types: [ '8:0' ],
+    action: 'allow',
+    protocol: 'icmp',
+    uuid: rule.uuid,
+    version: rule.version
+  };
+
+  t.deepEqual(rule.raw(), raw, 'rule.raw()');
+  t.deepEqual(rule.from, raw.from, 'rule.from');
+  t.deepEqual(rule.to, raw.to, 'rule.to');
+  t.ok(!rule.allVMs, 'rule.allVMs');
+
+  t.deepEqual(rule.serialize(), {
+    enabled: true,
+    rule: ruleTxt,
+    uuid: rule.uuid,
+    version: rule.version
+  }, 'rule.serialize()');
+
+  t.done();
+};
+
+
+exports['icmp: multiple types'] = function (t) {
+  var vm = '8a343ca8-b42a-4a27-a9c5-800f57d1e8ed';
+
+  var ruleTxt = util.format(
+    'FROM any TO vm %s ALLOW icmp (TYPE 8 CODE 0 AND TYPE 11 CODE 0 '
+    + 'AND TYPE 30)', vm);
+
+  var rule = fwrule.create({
+    rule: ruleTxt,
+    enabled: true,
+    version: fwrule.generateVersion()
+  });
+
+  var raw = {
+    from: {
+      ips: [],
+      subnets: [],
+      vms: [],
+      tags: [],
+      wildcards: ['any']
+    },
+    to: {
+      ips: [],
+      subnets: [],
+      vms: [vm],
+      tags: [],
+      wildcards: []
+    },
+    enabled: true,
+    types: [ '8:0', '11:0', '30' ],
+    action: 'allow',
+    protocol: 'icmp',
+    uuid: rule.uuid,
+    version: rule.version
+  };
+
+  t.deepEqual(rule.raw(), raw, 'rule.raw()');
+  t.deepEqual(rule.from, raw.from, 'rule.from');
+  t.deepEqual(rule.to, raw.to, 'rule.to');
+  t.ok(!rule.allVMs, 'rule.allVMs');
+
+  t.deepEqual(rule.types, raw.types, 'rule.types');
+  t.deepEqual(rule.protoTargets, raw.types, 'rule.protoTargets');
+
+  t.deepEqual(rule.serialize(), {
+    enabled: true,
+    rule: ruleTxt,
+    uuid: rule.uuid,
+    version: rule.version
+  }, 'rule.serialize()');
+
+  t.done();
+};
+
+
+exports['sorting: icmp codes'] = function (t) {
+  var vm = '8a343ca8-b42a-4a27-a9c5-800f57d1e8ed';
+
+  var rule = fwrule.create({
+    rule: util.format(
+    'FROM any TO vm %s ALLOW icmp '
+    + '(TYPE 8 CODE 0 AND TYPE 3 CODE 11 AND TYPE 40 AND TYPE 3 CODE 1 '
+    + 'AND TYPE 30 AND TYPE 3 CODE 5)', vm),
+    enabled: true,
+    version: fwrule.generateVersion()
+  });
+
+  var raw = {
+    from: {
+      ips: [],
+      subnets: [],
+      vms: [],
+      tags: [],
+      wildcards: ['any']
+    },
+    to: {
+      ips: [],
+      subnets: [],
+      vms: [vm],
+      tags: [],
+      wildcards: []
+    },
+    enabled: true,
+    types: [ '3:1', '3:5', '3:11', '8:0', '30', '40' ],
+    action: 'allow',
+    protocol: 'icmp',
+    uuid: rule.uuid,
+    version: rule.version
+  };
+
+  t.deepEqual(rule.raw(), raw, 'rule.raw()');
+  t.deepEqual(rule.from, raw.from, 'rule.from');
+  t.deepEqual(rule.to, raw.to, 'rule.to');
+  t.ok(!rule.allVMs, 'rule.allVMs');
+
+  t.deepEqual(rule.serialize(), {
+    enabled: true,
+    rule: util.format(
+    'FROM any TO vm %s ALLOW icmp '
+    + '(TYPE 3 CODE 1 AND TYPE 3 CODE 5 AND TYPE 3 CODE 11 '
+    + 'AND TYPE 8 CODE 0 AND TYPE 30 AND TYPE 40)', vm),
+    uuid: rule.uuid,
+    version: rule.version
+  }, 'rule.serialize()');
+
+  t.done();
+};
+
+
+exports['sorting: ports'] = function (t) {
+  var inRule = {
+    rule: 'FROM ip 10.88.88.1 TO tag tag2 ALLOW tcp '
+      + '(PORT 1002 AND PORT 10 AND PORT 1052 AND PORT 80 AND PORT 30245 '
+      + 'AND PORT 6)',
+    enabled: true,
+    version: fwrule.generateVersion()
+  };
+
+  var rule = fwrule.create(inRule);
+  var raw = {
+    action: 'allow',
+    enabled: inRule.enabled,
+    from: {
+      ips: [ '10.88.88.1' ],
+      vms: [],
+      subnets: [],
+      tags: [],
+      wildcards: []
+    },
+    protocol: 'tcp',
+    ports: [ 6, 10, 80, 1002, 1052, 30245 ],
     to: {
       ips: [],
       vms: [],
@@ -136,7 +510,54 @@ exports['multiple ports and owner_uuid'] = function (t) {
 
   t.deepEqual(rule.serialize(), {
     enabled: true,
-    owner_uuid: inRule.owner_uuid,
+    rule: 'FROM ip 10.88.88.1 TO tag tag2 ALLOW tcp '
+      + '(PORT 6 AND PORT 10 AND PORT 80 AND PORT 1002 AND PORT 1052 '
+      + 'AND PORT 30245)',
+    uuid: rule.uuid,
+    version: rule.version
+  }, 'rule.serialize()');
+
+  t.done();
+};
+
+
+exports['port ALL'] = function (t) {
+  var inRule = {
+    rule: 'FROM ip 10.88.88.1 TO tag tag2 ALLOW tcp PORT all',
+    enabled: true,
+    version: fwrule.generateVersion()
+  };
+
+  var rule = fwrule.create(inRule);
+  var raw = {
+    action: 'allow',
+    enabled: inRule.enabled,
+    from: {
+      ips: [ '10.88.88.1' ],
+      vms: [],
+      subnets: [],
+      tags: [],
+      wildcards: []
+    },
+    protocol: 'tcp',
+    ports: [ 'all' ],
+    to: {
+      ips: [],
+      vms: [],
+      subnets: [],
+      tags: [ 'tag2' ],
+      wildcards: []
+    },
+    uuid: rule.uuid,
+    version: rule.version
+  };
+
+  t.deepEqual(rule.raw(), raw, 'rule.raw()');
+  t.deepEqual(rule.ports, raw.ports, 'rule.ports');
+  t.deepEqual(rule.protoTargets, raw.ports, 'rule.protoTargets');
+
+  t.deepEqual(rule.serialize(), {
+    enabled: true,
     rule: inRule.rule,
     uuid: rule.uuid,
     version: rule.version
@@ -146,49 +567,10 @@ exports['multiple ports and owner_uuid'] = function (t) {
 };
 
 
-/*jsl:ignore*/
-var INVALID = [
-  // Invalid IP
-  [ {
-      rule: 'FROM ip 10.99.99.99.254 TO tag smartdc_role ALLOW tcp port 22'
-    }, /Unrecognized text/],
-  // Invalid UUID
-  [ { uuid: 'invalid',
-      rule: 'FROM tag foo TO ip 8.8.8.8 ALLOW udp port 53'
-      /* JSSTYLED */
-    }, /Invalid rule UUID "invalid"/ ],
-  // Invalid owner UUID
-  [ { owner_uuid: 'invalid',
-      rule: 'FROM tag foo TO ip 8.8.8.8 ALLOW udp port 53'
-      /* JSSTYLED */
-    }, /Invalid owner UUID "invalid"/ ],
-  // Non-target type in FROM
-  [ { rule: 'FROM foo TO ip 8.8.8.8 ALLOW udp port 53'
-    }, /Expecting/ ],
-  // Invalid subnet
-  [ { rule: 'FROM tag foo TO subnet 10.8.0.0/33 ALLOW udp port 53'
-      /* JSSTYLED */
-    }, /Subnet "10.8.0.0\/33" is invalid/ ]
-];
-/*jsl:end*/
 
-
-exports['Invalid rules'] = function (t) {
-  INVALID.forEach(function (data) {
-    var rule = data[0];
-    var expMsg = data[1];
-    t.throws(function () { fwrule.create(rule); }, expMsg,
-      'Error thrown: ' + expMsg);
-  });
-
-  t.done();
-};
-
-/*
- * Need tests around versions:
- * - if one is supplied, when it overrides what's already on disk
- * - version updates when doing a fw.update()
- *
- * Can't add duplicate uuids
- * - or rules that are identical
- */
+// Use to run only one test in this file:
+if (runOne) {
+  module.exports = {
+    oneTest: runOne
+  };
+}

@@ -98,10 +98,14 @@ function SourcePingError(cause, source) {
         cause = undefined;
     }
     assert.object(source, 'source');
+    var details = '';
+    if (cause) {
+        details = ': ' + cause.toString();
+    }
     ImgadmError.call(this, {
         cause: cause,
-        message: sprintf('unexpected ping error with image source "%s" (%s)',
-            source.url, source.type),
+        message: sprintf('unexpected ping error with image source "%s" (%s)%s',
+            source.url, source.type, details),
         code: 'SourcePing',
         exitStatus: 1
     });
@@ -123,6 +127,36 @@ function ImageNotFoundError(cause, uuid) {
 }
 util.inherits(ImageNotFoundError, ImgadmError);
 
+function ActiveImageNotFoundError(cause, uuid) {
+    if (uuid === undefined) {
+        uuid = cause;
+        cause = undefined;
+    }
+    assert.string(uuid);
+    ImgadmError.call(this, {
+        cause: cause,
+        message: sprintf('an active image "%s" was not found', uuid),
+        code: 'ActiveImageNotFound',
+        exitStatus: 1
+    });
+}
+util.inherits(ActiveImageNotFoundError, ImgadmError);
+
+function ImageNotActiveError(cause, uuid) {
+    if (uuid === undefined) {
+        uuid = cause;
+        cause = undefined;
+    }
+    assert.string(uuid);
+    ImgadmError.call(this, {
+        cause: cause,
+        message: sprintf('image "%s" is not active', uuid),
+        code: 'ImageNotActive',
+        exitStatus: 1
+    });
+}
+util.inherits(ImageNotActiveError, ImgadmError);
+
 function ImageNotInstalledError(cause, zpool, uuid) {
     if (uuid === undefined) {
         // `cause` was not provided.
@@ -136,25 +170,10 @@ function ImageNotInstalledError(cause, zpool, uuid) {
         cause: cause,
         message: sprintf('image "%s" was not found on zpool "%s"', uuid, zpool),
         code: 'ImageNotInstalled',
-        exitStatus: 1
+        exitStatus: 3
     });
 }
 util.inherits(ImageNotInstalledError, ImgadmError);
-
-function ImageAlreadyInstalledError(cause, uuid) {
-    if (uuid === undefined) {
-        uuid = cause;
-        cause = undefined;
-    }
-    assert.string(uuid);
-    ImgadmError.call(this, {
-        cause: cause,
-        message: sprintf('image is already installed: "%s"', uuid),
-        code: 'ImageAlreadyInstalled',
-        exitStatus: 1
-    });
-}
-util.inherits(ImageAlreadyInstalledError, ImgadmError);
 
 function ImageHasDependentClonesError(cause, imageInfo) {
     if (imageInfo === undefined) {
@@ -208,6 +227,21 @@ function InvalidManifestError(cause) {
     });
 }
 util.inherits(InvalidManifestError, ImgadmError);
+
+function UncompressionError(cause, message) {
+    if (message === undefined) {
+        message = cause;
+        cause = undefined;
+    }
+    assert.string(message);
+    ImgadmError.call(this, {
+        cause: cause,
+        message: message,
+        code: 'UncompressionError',
+        exitStatus: 1
+    });
+}
+util.inherits(UncompressionError, ImgadmError);
 
 function UsageError(cause, message) {
     if (message === undefined) {
@@ -373,10 +407,12 @@ module.exports = {
     NoSourcesError: NoSourcesError,
     SourcePingError: SourcePingError,
     ImageNotFoundError: ImageNotFoundError,
+    ActiveImageNotFoundError: ActiveImageNotFoundError,
+    ImageNotActiveError: ImageNotActiveError,
     ImageNotInstalledError: ImageNotInstalledError,
-    ImageAlreadyInstalledError: ImageAlreadyInstalledError,
     ImageHasDependentClonesError: ImageHasDependentClonesError,
     InvalidManifestError: InvalidManifestError,
+    UncompressionError: UncompressionError,
     UsageError: UsageError,
     UnknownOptionError: UnknownOptionError,
     UnknownCommandError: UnknownCommandError,

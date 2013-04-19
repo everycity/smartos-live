@@ -28,6 +28,7 @@ JS_CHECK_TARGETS=\
 	lib/util/*.js \
 	sbin/* \
 	test/unit/*.js \
+	test/integration/*.js \
 	test/lib/*.js
 
 #
@@ -41,6 +42,14 @@ JSSTYLE_OPTS = -o indent=2,strict-indent=1,doxygen,unparenthesized-return=0,cont
 .PHONY: test
 test:
 	$(NODEUNIT) --reporter tap test/unit/*.js
+
+.PHONY: teststop
+teststop:
+	@(for F in test/unit/*.js; do \
+		echo "# $$F" ;\
+		$(NODEUNIT) --reporter tap $$F ;\
+		[[ $$? == "0" ]] || exit 1; \
+	done)
 
 # Create a node modules suitable for installing in the platform
 $(NM):
@@ -61,11 +70,17 @@ $(NM):
 	@cp $(NM_ORIG)/clone/{LICENSE,clonePrototype.js} $(NM)/clone/
 	@mkdir $(NM)/fwrule
 	@cp tools/fwrule/lib/* $(NM)/fwrule/
+	@mkdir $(NM)/cmdln
+	@cp $(NM_ORIG)/cmdln/lib/cmdln.js $(NM)/cmdln/index.js
+	@cp $(NM_ORIG)/cmdln/LICENSE.txt $(NM)/cmdln/
+	@mkdir $(NM)/dashdash
+	@cp $(NM_ORIG)/cmdln/node_modules/dashdash/lib/dashdash.js $(NM)/dashdash/index.js
+	@cp $(NM_ORIG)/cmdln/node_modules/dashdash/LICENSE.txt $(NM)/dashdash/LICENSE.txt
 
 #
 # Re-adding nodeunit and test-related source files
 #
-NODEUNIT_FILES = LICENSE bin deps index.js lib
+NODEUNIT_FILES = LICENSE bin index.js lib
 TAP_FILES = LICENSE bin lib package.json
 TAP_NM = $(NM_ORIG)/nodeunit/node_modules/tap/node_modules
 # TAP dependencies that just have an index.js in their directory
@@ -76,10 +91,13 @@ BURRITO = $(BUNKER)/node_modules/burrito
 .PHONY: nodeunit
 nodeunit:
 	@rm -rf $(TEST_MODULES)
-	@mkdir -p $(TEST_MODULES)/nodeunit
+	@mkdir -p $(TEST_MODULES)/nodeunit/deps/ejs
 	@(for F in $(NODEUNIT_FILES); do \
 		cp -r $(NM_ORIG)/nodeunit/$$F $(TEST_MODULES)/nodeunit/; \
 	done)
+	@cp $(NM_ORIG)/nodeunit/deps/*.js $(TEST_MODULES)/nodeunit/deps
+	@cp -r $(NM_ORIG)/nodeunit/deps/ejs/lib $(TEST_MODULES)/nodeunit/deps/ejs/lib
+	@cp $(NM_ORIG)/nodeunit/deps/ejs/package.json $(TEST_MODULES)/nodeunit/deps/ejs/package.json
 	@mkdir -p $(TEST_MODULES)/async
 	@cp $(TEST_MODULES)/nodeunit/deps/async.js $(TEST_MODULES)/async/index.js
 	@cp $(TEST_MODULES)/nodeunit/LICENSE $(TEST_MODULES)/async/
