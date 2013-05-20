@@ -243,7 +243,7 @@ function (zonename, checkService, callback) {
             return callback();
           }
           else {
-            fs.mkdir(smartdcpath, parseInt('0755', 8), function (error) {
+            fs.mkdir(smartdcpath, parseInt('700', 8), function (error) {
               callback(error);
             });
           }
@@ -252,12 +252,23 @@ function (zonename, checkService, callback) {
     ]
   , function (error) {
       var sockpath = path.join(localpath, 'metadata.sock');
+      var gzsockpath = path.join(smartdcpath, 'metadata.sock');
+
       var zopts
         = { zone: zonename
           , path: sockpath
           };
-      self.createZoneSocket(zopts, function () {
+
+      var oldUmask = process.umask(parseInt('077', 8));
+
+      self.createZoneSocket(zopts, function (createErr) {
+        if (createErr) {
+          zlog.error('createZoneSocket Error: ' + createErr.message);
+          zlog.error(createErr.stack);
+        }
+
         zlog.info("Zone socket created.");
+
         if (callback) {
           return callback();
         }
@@ -382,6 +393,8 @@ MetadataAgent.prototype.makeMetadataHandler = function (zone, socket) {
               lookup_fields.push('nics');
             }
         }
+    } else if (cmd === 'GET' && want.match(/_pw$/)) {
+        lookup_fields.push('internal_metadata');
     } else {
         lookup_fields.push('customer_metadata');
     }
@@ -463,6 +476,15 @@ MetadataAgent.prototype.makeMetadataHandler = function (zone, socket) {
           } else {
             var val = VM.flatten(vmobj, want);
             return returnit(null, val);
+          }
+        }
+        else if (want.match(/_pw$/)) {
+          if (vmobj.hasOwnProperty('internal_metadata')) {
+            returnit(null, vmobj.internal_metadata[want]);
+            return;
+          } else {
+            returnit(new Error('Zone did not contain internal_metadata'));
+            return;
           }
         }
         else {
