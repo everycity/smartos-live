@@ -57,6 +57,24 @@ var RULE_PATH = '/var/fw/rules';
 var VM_PATH = '/var/fw/vms';
 var IPF_CONF = '%s/config/ipf.conf';
 var IPF_CONF_OLD = '%s/config/ipf.conf.old';
+// VM fields that affect filtering
+var VM_FIELDS = [
+  'firewall_enabled',
+  'nics',
+  'owner_uuid',
+  'state',
+  'tags',
+  'uuid',
+  'zonepath'
+];
+// VM fields required for filtering
+var VM_FIELDS_REQUIRED = [
+  'nics',
+  'state',
+  'tags',
+  'uuid',
+  'zonepath'
+];
 
 
 
@@ -313,6 +331,7 @@ function createUpdatedRules(opts, callback) {
 function createVMlookup(vms, callback) {
   LOG.trace('createVMlookup: entry');
 
+  var errs = [];
   var vmStore = {
     all: {},
     ips: {},
@@ -325,6 +344,23 @@ function createVMlookup(vms, callback) {
   vmStore.wildcards.vmall = vmStore.all;
 
   vms.forEach(function (fullVM) {
+    var missing = [];
+    VM_FIELDS_REQUIRED.forEach(function (field) {
+      if (!fullVM.hasOwnProperty(field)) {
+        missing.push(field);
+      }
+    });
+
+    if (missing.length !== 0) {
+      LOG.error({ vm: fullVM, missing: missing }, 'missing VM fields');
+      errs.push(new verror.VError(
+        'VM %s: missing field%s required for firewall: %s',
+        fullVM.uuid,
+        missing.length === 0 ? '' : 's',
+        missing.join(', ')));
+      return;
+    }
+
     var vm = {
       enabled: fullVM.firewall_enabled || false,
       ips: fullVM.nics.map(function (n) { return (n.ip); }).filter(
@@ -351,6 +387,10 @@ function createVMlookup(vms, callback) {
 
     // XXX: subnet
   });
+
+  if (errs.length !== 0) {
+    return callback(createMultiError(errs));
+  }
 
   if (LOG.debug()) {
     var truncated = { };
@@ -2398,5 +2438,6 @@ module.exports = {
   stats: vmStats,
   status: vmStatus,
   update: update,
-  validatePayload: validatePayload
+  validatePayload: validatePayload,
+  VM_FIELDS: VM_FIELDS
 };
