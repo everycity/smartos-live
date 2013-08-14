@@ -1825,11 +1825,6 @@ IMGADM.prototype.createImage = function createImage(options, callback) {
                     }
                     return;
                 }
-                if (vm.brand === 'kvm') {
-                    next(new errors.InternalError({ message:
-                        'image creation is not yet supported for KVM VMs'}));
-                    return;
-                }
                 if (vm.state !== 'stopped') {
                     next(new errors.VmNotStoppedError(vmUuid));
                     return;
@@ -1842,7 +1837,7 @@ IMGADM.prototype.createImage = function createImage(options, callback) {
             var opts;
             if (vmInfo.brand === 'kvm') {
                 if (vmInfo.disks) {
-                    for (var i = 0; i < vmInfo.disks; i++) {
+                    for (var i = 0; i < vmInfo.disks.length; i++) {
                         if (vmInfo.disks[i].image_uuid) {
                             var disk = vmInfo.disks[i];
                             opts = {uuid: disk.image_uuid, zpool: disk.zpool};
@@ -1921,8 +1916,10 @@ IMGADM.prototype.createImage = function createImage(options, callback) {
             }
         },
         function snapshotVm(next) {
-            snapshot = format('%s@tmp-imgadm-%s-%s', vmZfsFilesystem,
-                Date.now(), process.pid);
+            // This has the potential to fail on an existing snapshot named
+            // 'final'. However we want '@final' to be the snapshot in the
+            // created image -- see the notes in _installImage.
+            snapshot = format('%s@final', vmZfsFilesystem);
             logCb(format('Snapshotting to "%s"', snapshot));
             zfs.snapshot(snapshot, function (zfsErr) {
                 if (zfsErr) {
@@ -1939,7 +1936,12 @@ IMGADM.prototype.createImage = function createImage(options, callback) {
             // it more difficult to do (a) sha1 pre-caculation for upload
             // checking and (b) eventual re-upload support.
 
-            imageInfo.filePath = options.savePrefix + '.zfs';
+            imageInfo.filePath = options.savePrefix
+            if (imageInfo.manifest.type === 'zvol') {
+                imageInfo.filePath += '.zvol';
+            } else {
+                imageInfo.filePath += '.zfs';
+            }
 
             // Compression
             var compression = options.compression || 'none';
