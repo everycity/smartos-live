@@ -1,6 +1,5 @@
 f etc/bashrc 0444 root sys
 f etc/issue 0444 root sys
-f etc/release 0444 root sys
 
 f lib/svc/method/net-flipflop 0555 root bin
 f lib/svc/manifest/network/network-flipflop.xml 0444 root sys
@@ -43,13 +42,6 @@ s usr/lib/brand/solaris10/jdetach=../joyent/jdetach
 s usr/lib/brand/solaris10/jinstall=../joyent/jinstall
 s usr/lib/brand/solaris10/juninstall=../joyent/juninstall
 s usr/lib/brand/solaris10/statechange=../joyent/statechange
-
-
-# driver customizations
-f kernel/drv/e1000g.conf 0644 root sys
-
-d root/.ssh 0700 root root
-f root/.ssh/authorized_keys 0600 root root
 
 # /ec directory for smartos-userland
 d ec 0755 root sys
