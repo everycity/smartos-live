@@ -20,10 +20,10 @@
  *
  * CDDL HEADER END
  *
- * Copyright (c) 2013, Joyent, Inc. All rights reserved.
+ * Copyright (c) 2014, Joyent, Inc. All rights reserved.
  *
  * * *
- * Some base imgadm tests.
+ * Some basic imgadm tests.
  */
 
 var p = console.log;
@@ -38,6 +38,18 @@ var tap4nodeunit = require('./tap4nodeunit.js');
 var after = tap4nodeunit.after;
 var before = tap4nodeunit.before;
 var test = tap4nodeunit.test;
+
+
+function objCopy(obj, target) {
+    if (!target) {
+        target = {};
+    }
+    Object.keys(obj).forEach(function (k) {
+        target[k] = obj[k];
+    });
+    return target;
+}
+
 
 
 test('imgadm --version', function (t) {
@@ -65,11 +77,8 @@ test('imgadm --version', function (t) {
 });
 
 
-test('imgadm -vv   # bunyan debug log on stderr', function (t) {
-    exec('imgadm -vv bogus', function (err, stdout, stderr) {
-        t.ok(err);
-        t.equal(err.code, 1);
-        t.equal(stdout, '', 'stdout');
+test('imgadm -v list  # bunyan debug log on stderr', function (t) {
+    exec('imgadm -v list', function (err, stdout, stderr) {
         t.ok(stderr);
         var firstLine = stderr.split(/\n/g)[0];
         var record = JSON.parse(firstLine);
@@ -79,8 +88,11 @@ test('imgadm -vv   # bunyan debug log on stderr', function (t) {
     });
 });
 
-test('imgadm -vvv   # bunyan "src" log on stderr', function (t) {
-    exec('imgadm -vvv bogus', function (err, stdout, stderr) {
+test('IMGADM_LOG_LEVEL=trace imgadm   # bunyan "src" log on stderr', function (t) {
+    var env = objCopy(process.env);
+    env.IMGADM_LOG_LEVEL = 'trace';
+    var execOpts = {env: env};
+    exec('imgadm bogus', execOpts, function (err, stdout, stderr) {
         t.ok(err);
         t.equal(err.code, 1);
         t.equal(stdout, '', 'stdout');

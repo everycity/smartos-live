@@ -70,6 +70,7 @@
 	<device match="dtrace/*" />
 	<device match="dtrace/provider/*" />
 	<device match="fd" />
+	<device match="inotify" />
 	<device match="ipnet" />
 	<device match="kstat" />
 	<device match="lo0" />
@@ -108,6 +109,7 @@
 	<device match="udp" />
 	<device match="udp6" />
 	<device match="urandom" />
+	<device match="vnd/*" />
 	<device match="zero" />
 	<device match="zfs" />
 	<device match="zvol/dsk/%P/%z/*" />

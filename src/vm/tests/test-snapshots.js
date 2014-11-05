@@ -1,14 +1,16 @@
-// Copyright 2012 Joyent, Inc.  All rights reserved.
+// Copyright 2014 Joyent, Inc.  All rights reserved.
 
-process.env['TAP'] = 1;
 var async = require('/usr/node/node_modules/async');
 var cp = require('child_process');
 var execFile = cp.execFile;
 var fs = require('fs');
 var path = require('path');
-var test = require('tap').test;
 var VM = require('/usr/vm/node_modules/VM');
 var vmtest = require('../common/vmtest.js');
+
+// this puts test stuff in global, so we need to tell jsl about that:
+/* jsl:import ../node_modules/nodeunit-plus/index.js */
+require('nodeunit-plus');
 
 VM.loglevel = 'DEBUG';
 
@@ -39,19 +41,16 @@ function hasSnapshot(snapshots, snapname)
     return false;
 }
 
-// This will ensure vmtest.CURRENT_* are installed
-vmtest.ensureCurrentImages();
-
 // create VM try to snapshot, should fail
 
-test('create zone with delegated dataset', {'timeout': 240000}, function(t) {
+test('create joyent-minimal VM with delegated dataset', function(t) {
     var payload = {
-        'brand': 'joyent-minimal',
-        'autoboot': false,
-        'image_uuid': image_uuid,
-        'alias': 'test-snapshot-' + process.pid,
-        'do_not_inventory': true,
-        'delegate_dataset': true
+        brand: 'joyent-minimal',
+        autoboot: false,
+        image_uuid: image_uuid,
+        alias: 'test-snapshot-' + process.pid,
+        do_not_inventory: true,
+        delegate_dataset: true
     };
 
     VM.create(payload, function (err, obj) {
@@ -76,7 +75,7 @@ test('create zone with delegated dataset', {'timeout': 240000}, function(t) {
     });
 });
 
-test('create snapshot that should fail on zone with delegated dataset', {'timeout': 240000}, function(t) {
+test('create joyent-minimal snapshot that should fail with delegated dataset', function(t) {
     if (abort) {
         t.ok(false, 'skipping snapshot as test run is aborted.');
         t.end();
@@ -97,7 +96,7 @@ test('create snapshot that should fail on zone with delegated dataset', {'timeou
     });
 });
 
-test('delete zone', function(t) {
+test('delete joyent-minimal VM w/ delegated dataset', function(t) {
     if (abort) {
         t.ok(false, 'skipping send as test run is aborted.');
         t.end();
@@ -123,16 +122,16 @@ test('delete zone', function(t) {
 
 // create zone with delegated dataset try to snapshot, should fail
 
-test('create KVM VM', {'timeout': 240000}, function(t) {
+test('create KVM VM', function(t) {
     var payload = {
-        'brand': 'kvm',
-        'autoboot': false,
-        'alias': 'test-snapshot-' + process.pid,
-        'do_not_inventory': true,
-        'ram': 128,
-        'disks': [{
-            'size': 5120,
-            'model': 'virtio'
+        brand: 'kvm',
+        autoboot: false,
+        alias: 'test-snapshot-' + process.pid,
+        do_not_inventory: true,
+        ram: 128,
+        disks: [{
+            size: 5120,
+            model: 'virtio'
         }]
     };
 
@@ -156,7 +155,7 @@ test('create KVM VM', {'timeout': 240000}, function(t) {
     });
 });
 
-test('create snapshot that should fail on kvm', {'timeout': 240000}, function(t) {
+test('create snapshot that should fail on KVM VM', function(t) {
     if (abort) {
         t.ok(false, 'skipping snapshot as test run is aborted.');
         t.end();
@@ -177,7 +176,7 @@ test('create snapshot that should fail on kvm', {'timeout': 240000}, function(t)
     });
 });
 
-test('delete vm', function(t) {
+test('delete KVM VM', function(t) {
     if (abort) {
         t.ok(false, 'skipping send as test run is aborted.');
         t.end();
@@ -217,13 +216,13 @@ test('delete vm', function(t) {
 //    delete 100 snapshots
 
 
-test('create normal zone', {'timeout': 240000}, function(t) {
+test('create joyent-minimal VM w/o delegated', function(t) {
     var payload = {
-        'brand': 'joyent-minimal',
-        'autoboot': true,
-        'image_uuid': image_uuid,
-        'alias': 'test-snapshot-' + process.pid,
-        'do_not_inventory': true
+        brand: 'joyent-minimal',
+        autoboot: true,
+        image_uuid: image_uuid,
+        alias: 'test-snapshot-' + process.pid,
+        do_not_inventory: true
     };
 
     VM.create(payload, function (err, obj) {
@@ -248,7 +247,7 @@ test('create normal zone', {'timeout': 240000}, function(t) {
     });
 });
 
-test('create snapshot without vmsnap name and it should not show up', {'timeout': 240000}, function(t) {
+test('create snapshot without vmsnap name and it should not show up', function(t) {
 
     var dataset = vmobj.zfs_filesystem;
     var snapshot = dataset + '@manual-snapshot';
@@ -294,7 +293,7 @@ function createBadSnapshot(t, uuid, name, callback)
     });
 }
 
-test('create snapshot with bad name', {'timeout': 240000}, function(t) {
+test('create snapshot with bad name', function(t) {
 
     var bad_names = [
         'thisisareallylongsnapshotnamethatshouldbreakthingsbecauseitiswaytoolongforthemaxsnapshotnamevalue',
@@ -322,7 +321,7 @@ test('create snapshot with bad name', {'timeout': 240000}, function(t) {
     });
 });
 
-test('write file to zoneroot then snapshot', {'timeout': 240000}, function(t) {
+test('write file to joyent-minimal zoneroot then snapshot1', function(t) {
 
     var filename;
 
@@ -357,7 +356,7 @@ test('write file to zoneroot then snapshot', {'timeout': 240000}, function(t) {
     });
 });
 
-test('write file to zoneroot again then snapshot again', {'timeout': 240000}, function(t) {
+test('write file to joyent-minimal zoneroot again then snapshot2', function(t) {
 
     var filename;
 
@@ -393,7 +392,7 @@ test('write file to zoneroot again then snapshot again', {'timeout': 240000}, fu
     });
 });
 
-test('try snapshot with same name again', {'timeout': 240000}, function(t) {
+test('try joyent-minimal snapshot2 again', function(t) {
 
     if (abort) {
         t.ok(false, 'skipping writing as test run is aborted.');
@@ -407,7 +406,7 @@ test('try snapshot with same name again', {'timeout': 240000}, function(t) {
     });
 });
 
-test('write file to zoneroot one last time, then snapshot again', {'timeout': 240000}, function(t) {
+test('write file to joyent-minimal zoneroot one last time, then snapshot3', function(t) {
 
     var filename;
 
@@ -444,7 +443,7 @@ test('write file to zoneroot one last time, then snapshot again', {'timeout': 24
     });
 });
 
-test('rollback to snapshot2 and test data', {'timeout': 240000}, function(t) {
+test('rollback joyent-minimal to snapshot2 and test data', function(t) {
     if (abort) {
         t.ok(false, 'skipping rollback as test run is aborted.');
         t.end();
@@ -482,7 +481,7 @@ test('rollback to snapshot2 and test data', {'timeout': 240000}, function(t) {
     });
 });
 
-test('rollback to snapshot1 and test data', {'timeout': 240000}, function(t) {
+test('rollback joyent-minimal to snapshot1 and test data', function(t) {
     if (abort) {
         t.ok(false, 'skipping rollback as test run is aborted.');
         t.end();
@@ -519,7 +518,7 @@ test('rollback to snapshot1 and test data', {'timeout': 240000}, function(t) {
     });
 });
 
-test('delete snapshot1', {'timeout': 240000}, function(t) {
+test('delete snapshot1 from joyent-minimal', function(t) {
 
     if (abort) {
         t.ok(false, 'skipping deletion as test run is aborted.');
@@ -536,7 +535,7 @@ test('delete snapshot1', {'timeout': 240000}, function(t) {
     });
 });
 
-test('create snapshot with numeric name that should succeed', {'timeout': 240000}, function(t) {
+test('create snapshot on joyent-minimal with numeric name that should succeed', function(t) {
     if (abort) {
         t.ok(false, 'skipping snapshot as test run is aborted.');
         t.end();
@@ -643,7 +642,7 @@ function createXSnapshots(t, x, callback)
     });
 }
 
-test('create 50 snapshots', {'timeout': 240000}, function(t) {
+test('create 50 snapshots on joyent-minimal', function(t) {
 
     createXSnapshots(t, 50, function (err) {
         t.end();
@@ -651,7 +650,7 @@ test('create 50 snapshots', {'timeout': 240000}, function(t) {
 
 });
 
-test('delete 50 snapshots', {'timeout': 240000}, function(t) {
+test('delete 50 snapshots on joyent-minimal', function(t) {
 
     if (abort) {
         t.ok(false, 'skipping create-delete as test run is aborted.');
@@ -684,7 +683,7 @@ test('delete 50 snapshots', {'timeout': 240000}, function(t) {
     });
 });
 
-test('create/delete snapshot should update last_modified', {'timeout': 240000}, function(t) {
+test('create/delete snapshot on joyent-minimal should update last_modified', function(t) {
 
     var pre_snap_timestamp;
     var post_snap_timestamp;
@@ -749,7 +748,7 @@ test('create/delete snapshot should update last_modified', {'timeout': 240000}, 
     });
 });
 
-test('create/delete snapshot should handle mounting /checkpoints', {'timeout': 240000}, function(t) {
+test('create/delete joyent-minimal snapshot should handle mounting /checkpoints', function(t) {
     var snapname = 'mountie';
     var checkpoint_dir = path.join(vmobj.zonepath, 'root', 'checkpoints', snapname);
 
@@ -800,7 +799,7 @@ test('create/delete snapshot should handle mounting /checkpoints', {'timeout': 2
 
 
 // create 10 snapshots (to test that deleting a VM with snapshots works)
-test('create 10 more snapshots', {'timeout': 240000}, function(t) {
+test('create 10 more snapshots of joyent-minimal VM', function(t) {
 
     createXSnapshots(t, 10, function (err) {
         t.end();
@@ -808,7 +807,7 @@ test('create 10 more snapshots', {'timeout': 240000}, function(t) {
 
 });
 
-test('delete zone', {'timeout': 240000}, function(t) {
+test('delete joyent-minimal VM', function(t) {
 
     if (abort) {
         t.ok(false, 'skipping send as test run is aborted.');
@@ -834,8 +833,10 @@ test('delete zone', {'timeout': 240000}, function(t) {
     }
 });
 
+/* XXX disabled pending OS-2848
+
 // test that snapshots work on SNGL
-test('create SNGL zone', {'timeout': 240000}, function(t) {
+test('create SNGL zone', function(t) {
     var payload = {
         'brand': 'sngl',
         'autoboot': true,
@@ -866,8 +867,8 @@ test('create SNGL zone', {'timeout': 240000}, function(t) {
     });
 });
 
-// XXX duplicate of joyent-minimal test from above
-test('write file to zoneroot then snapshot', {'timeout': 240000}, function(t) {
+// XXX duplicate of joyent-minimal test from above, but for SNGL
+test('write file to zoneroot then snapshot', function(t) {
 
     var filename;
 
@@ -880,7 +881,7 @@ test('write file to zoneroot then snapshot', {'timeout': 240000}, function(t) {
     filename = path.join(vmobj.zonepath, 'root', '/root/hello.txt');
 
     fs.writeFile(filename, MAGIC_STRING1, function (err) {
-        t.ok(!err, 'no error writing file to zoneroot');
+        t.ok(!err, 'no error writing file to zoneroot: ' + (err ? err.message : 'success'));
         if (err) {
             abort = true;
             t.end();
@@ -902,8 +903,8 @@ test('write file to zoneroot then snapshot', {'timeout': 240000}, function(t) {
     });
 });
 
-// XXX duplicate of joyent-minimal test from above
-test('write file to zoneroot again then snapshot again', {'timeout': 240000}, function(t) {
+// XXX duplicate of joyent-minimal test from above, but for SNGL
+test('write file to zoneroot again then snapshot again', function(t) {
 
     var filename;
 
@@ -939,8 +940,8 @@ test('write file to zoneroot again then snapshot again', {'timeout': 240000}, fu
     });
 });
 
-// XXX duplicate of joyent-minimal test from above
-test('write file to zoneroot one last time, then snapshot again', {'timeout': 240000}, function(t) {
+// XXX duplicate of joyent-minimal test from above, but for SNGL
+test('write file to zoneroot one last time, then snapshot again', function(t) {
 
     var filename;
 
@@ -977,8 +978,8 @@ test('write file to zoneroot one last time, then snapshot again', {'timeout': 24
     });
 });
 
-// XXX duplicate of joyent-minimal test from above
-test('rollback to snapshot2 and test data', {'timeout': 240000}, function(t) {
+// XXX duplicate of joyent-minimal test from above, but for SNGL
+test('rollback to snapshot2 and test data', function(t) {
     if (abort) {
         t.ok(false, 'skipping rollback as test run is aborted.');
         t.end();
@@ -1016,8 +1017,8 @@ test('rollback to snapshot2 and test data', {'timeout': 240000}, function(t) {
     });
 });
 
-// XXX duplicate of joyent-minimal test from above
-test('rollback to snapshot1 and test data', {'timeout': 240000}, function(t) {
+// XXX duplicate of joyent-minimal test from above, but for SNGL
+test('rollback to snapshot1 and test data', function(t) {
     if (abort) {
         t.ok(false, 'skipping rollback as test run is aborted.');
         t.end();
@@ -1054,8 +1055,8 @@ test('rollback to snapshot1 and test data', {'timeout': 240000}, function(t) {
     });
 });
 
-// XXX duplicate of joyent-minimal test from above
-test('delete snapshot1', {'timeout': 240000}, function(t) {
+// XXX duplicate of joyent-minimal test from above, but for SNGL
+test('delete sngl snapshot1', function(t) {
 
     if (abort) {
         t.ok(false, 'skipping deletion as test run is aborted.');
@@ -1095,14 +1096,15 @@ test('delete zone', function(t) {
         t.end();
     }
 });
+*/
 
-test('create stopped zone', {'timeout': 240000}, function(t) {
+test('create stopped joyent-minimal VM', function(t) {
     var payload = {
-        'brand': 'joyent-minimal',
-        'autoboot': false,
-        'image_uuid': image_uuid,
-        'alias': 'test-snapshot-' + process.pid,
-        'do_not_inventory': true
+        brand: 'joyent-minimal',
+        autoboot: false,
+        image_uuid: image_uuid,
+        alias: 'test-snapshot-' + process.pid,
+        do_not_inventory: true
     };
 
     VM.create(payload, function (err, obj) {
@@ -1127,7 +1129,7 @@ test('create stopped zone', {'timeout': 240000}, function(t) {
     });
 });
 
-test('take snapshot (should not mount)', {'timeout': 240000}, function(t) {
+test('take snapshot of stopped joyent-minimal VM (should not mount)', function(t) {
 
     var filename;
 
@@ -1156,7 +1158,7 @@ test('take snapshot (should not mount)', {'timeout': 240000}, function(t) {
     });
 });
 
-test('delete zone', {'timeout': 240000}, function(t) {
+test('delete stopped joyent-minimal VM', function(t) {
 
     if (abort) {
         t.ok(false, 'skipping send as test run is aborted.');

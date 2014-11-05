@@ -1,4 +1,4 @@
-vmadm(1m) -- Manage SmartOS virtual machines
+vmadm(1M) -- Manage SmartOS virtual machines
 ============================================
 
 ## SYNOPSIS
@@ -7,9 +7,14 @@ vmadm(1m) -- Manage SmartOS virtual machines
 ## DESCRIPTION
 
 The vmadm tool allows you to interact with virtual machines on a SmartOS
-system. Both OS Virtual Machines (zones) and KVM Virtual Machines can be
-managed. vmadm allows you to create, inspect, modify and delete virtual
-machines on the local system.
+system. All 3 of: OS Virtual Machines (SmartOS zones), LX Virtual Machines
+and KVM Virtual Machines can be managed. vmadm allows you to create, inspect,
+modify and delete virtual machines on the local system.
+
+IMPORTANT: Support for LX VMs is currently limited and experimental. This means
+it is very likely to change in major ways without notice. Also: not all the LX
+functionality that *is* implemented is documented yet. The documentation will
+be updated as things stablize.
 
 The primary reference for a VM is its UUID. Most commands operate on VMs by
 UUID. In SmartOS, there are included bash tab-completion rules so that you can
@@ -52,7 +57,7 @@ tab-complete UUIDs rather than having to type them out for every command.
         Connect to the text console for a running VM. For OS VMs, this will be
         the zone console. For KVM VMs, this will be the serial console and your
         VM will need to be setup with getty or similar running on the first
-        serial device.
+        serial device. Not yet supported on LX VMs.
 
         To end the serial console session hit CTRL-]. For OS VMs, you'll need
         to do this at the start of a line, so generally this means pressing:
@@ -64,8 +69,17 @@ tab-complete UUIDs rather than having to type them out for every command.
         Delete the VM with the specified UUID. The VM and any associated
         storage including zvols and the zone filesystem will be removed.
 
-        Note: this command is not interactive, take care to delete the right
-        VM.
+        If you have set the indestructible_zoneroot or indestructible_delegated
+        flags on a VM it *cannot* be deleted until you have unset these flags
+        with something like:
+
+            vmadm update <uuid> indestructible_zoneroot=false
+            vmadm update <uuid> indestructible_delegated=false
+
+        to remove the snapshot and holds.
+
+        Note: 'vmadm delete' command is not interactive, take care to delete the
+        right VM.
 
       delete-snapshot <uuid> <snapname>
 
@@ -89,7 +103,7 @@ tab-complete UUIDs rather than having to type them out for every command.
       info <uuid> [type,...]
 
         The info command operates on running KVM VMs only. It talks to the
-        vmadmd(1m) daemon and requests some information about the running VM.
+        vmadmd(1M) daemon and requests some information about the running VM.
         The information is output to stdout as a JSON object with member
         objects for each type specified. If no types are specified, all info
         is included. The type values can be separated either by commas or
@@ -487,7 +501,7 @@ tab-complete UUIDs rather than having to type them out for every command.
 
         type -- type of the properties value.
 
-        vmtype -- types of VM (OS and/or KVM) for which this property applies.
+        vmtype -- types of VM (KVM, LX, OS) for which this property applies.
 
         listable -- if they can be included in the -o or -s lists for the
                     'vmadm list' command.
@@ -573,6 +587,17 @@ tab-complete UUIDs rather than having to type them out for every command.
         update: yes
         default: 'order=cd'
 
+    boot_timestamp:
+
+        This is a read-only property that will exist only for running VMs. When
+        available, it will indicate the time the VM last booted.
+
+        type: string (ISO 8601 timestamp)
+        vmtype: OS,KVM
+        listable: yes
+        create: no
+        update: no
+
     brand:
 
         This will be one of 'joyent', 'joyent-minimal' or 'sngl' for OS
@@ -655,8 +680,13 @@ tab-complete UUIDs rather than having to type them out for every command.
         This field allows metadata to be set and associated with this VM. The
         value should be an object with only top-level key=value pairs.
 
-        NOTE: for historical reasons, do not put keys in here that match the
+        NOTE1: for historical reasons, do not put keys in here that match the
         pattern *_pw. Those keys should go in internal_metadata instead.
+
+        NOTE2: keys that are prefixed with one of the prefixes listed in
+        internal_metadata_namespaces will not be read from customer_metadata but
+        rather from internal_metadata. These will also be read-only from within
+        the zone.
 
         type: JSON Object (key: value)
         vmtype: OS,KVM
@@ -664,22 +694,6 @@ tab-complete UUIDs rather than having to type them out for every command.
         create: yes
         update: yes (but see special notes on update command)
         default: {}
-
-    image_uuid:
-
-        This should be a UUID identifying the image for the VM if a VM was
-        created from an image.
-
-        NOTE: when this is passed for KVM VMs, it specifies the *zone root*
-        dataset which is not visible from within the VM. The user-visible
-        dataset will be the one specified through the disks.*.image_uuid.
-        Normally you do *not* want to set this for KVM.
-
-        type: string (UUID)
-        vmtype: OS,KVM
-        listable: yes
-        create: yes
-        update: no
 
     datasets:
 
@@ -764,7 +778,7 @@ tab-complete UUIDs rather than having to type them out for every command.
 
         See zfs_root_compression section below for more details.
 
-        type: string one of: "on,off,lzjb,gzip,gzip-N,zle"
+        type: string one of: "on,off,gzip,gzip-N,lz4,lzjb,zle"
         vmtype: KVM
         listable: no
         create: yes
@@ -997,13 +1011,13 @@ tab-complete UUIDs rather than having to type them out for every command.
     firewall_enabled:
 
         This enables the firewall for this VM, allowing firewall rules set
-        by fwadm(1m) to be applied.
+        by fwadm(1M) to be applied.
 
         Note: this property will only show up in a 'vmadm get' when it's set
         true. When set false the property will not appear.
 
         type: boolean
-        vmtype: OS,KVM
+        vmtype: OS
         listable: no
         create: yes
         update: yes
@@ -1034,6 +1048,22 @@ tab-complete UUIDs rather than having to type them out for every command.
         update: yes (but does nothing for OS VMs)
         default: the value of zonename
 
+    image_uuid:
+
+        This should be a UUID identifying the image for the VM if a VM was
+        created from an image.
+
+        NOTE: when this is passed for KVM VMs, it specifies the *zone root*
+        dataset which is not visible from within the VM. The user-visible
+        dataset will be the one specified through the disks.*.image_uuid.
+        Normally you do *not* want to set this for KVM.
+
+        type: string (UUID)
+        vmtype: OS,KVM
+        listable: yes
+        create: yes
+        update: no
+
     internal_metadata:
 
         This field allows metadata to be set and associated with this VM. The
@@ -1055,6 +1085,79 @@ tab-complete UUIDs rather than having to type them out for every command.
         update: yes (but see special notes on update command)
         default: {}
 
+    internal_metadata_namespaces:
+
+        This allows a list of namespaces to be set as internal_metadata-only
+        prefixes. If a namespace 'foo' is in this list, metadata keys with the
+        prefix 'foo:' will come from internal_metadata rather than
+        customer_metadata. They will also be read-only from within the zone.
+
+        type: list of strings
+        vmtype: OS,KVM
+        listable: no
+        create: yes
+        update: yes
+        default: []
+
+    indestructible_delegated:
+
+        When set this property adds an @indestructible snapshot to the delegated
+        (<zfs_filesystem>/data) dataset and sets a zfs hold on that snapshot.
+        This hold must be removed before the VM can be deleted enabling a
+        two-step deletion. Eg. to delete a VM where this has been set, you would
+        need to:
+
+            vmadm update <uuid> indestructible_delegated=false
+            vmadm delete <uuid>
+
+        instead of being able to do the delete on its own. The property will
+        only show up in VM objects when set true.
+
+        NOTE: if the hold on the @indestructible dataset is removed manually
+        from the GZ or from within the zone, this would also remove this flag
+        and allow the VM to be deleted.
+
+        type: boolean
+        vmtype: KVM,LX,OS
+        listable: yes
+        create: yes
+        update: yes
+        default: false
+
+    indestructible_zoneroot:
+
+        When set this property adds an @indestructible snapshot to the zoneroot
+        (zfs_filesystem) dataset and sets a zfs hold on that snapshot. This hold
+        must be removed before the VM can be deleted *or reprovisioned*. Eg. to
+        delete a VM where this has been set, you would need to:
+
+            vmadm update <uuid> indestructible_zoneroot=false
+            vmadm delete <uuid>
+
+        instead of being able to do the delete on its own. The property will
+        only show up in VM objects when set true.
+
+        NOTE: if the hold on the @indestructible dataset is removed manually
+        from the GZ, this would also remove this flag and allow the VM to be
+        deleted.
+
+        type: boolean
+        vmtype: KVM,LX,OS
+        listable: yes
+        create: yes
+        update: yes
+        default: false
+
+    kernel_version:
+
+        This sets the version of Linux to emulate for LX VMs.
+
+        type: string (kernel version, eg. 2.6.31)
+        vmtype: LX
+        listable: no
+        create: no
+        update: yes
+
     limit_priv:
 
         This sets a list of privileges that will be available to the Zone that
@@ -1067,6 +1170,18 @@ tab-complete UUIDs rather than having to type them out for every command.
         update: yes
         OS default: "default"
         KVM default: "default,-file_link_any,-net_access,-proc_fork,-proc_info,-proc_session"
+
+    maintain_resolvers:
+
+        If set, the resolvers in /etc/resolv.conf inside the VM will be updated
+        when the resolvers property is updated.
+
+        type: boolean
+        vmtype: OS
+        listable: no
+        create: yes
+        update: yes
+        default: false
 
     max_locked_memory:
 
@@ -1229,8 +1344,10 @@ tab-complete UUIDs rather than having to type them out for every command.
 
         This sets additional IP addresses from which this nic is allowed to
         send traffic, in addition to the IPs in the ip and vrrp_primary_ip
-        properties (if set). Values can be either single IPv4 Addresses or
-        CIDR ranges in the form 192.168.1.0/24.
+        properties (if set). Values may be single IPv4 or IPv6 addresses
+        or IPv4 and IPv6 CIDR ranges. The following are all valid
+        examples of allowed_ips: '10.169.0.0/16', '10.99.99.7',
+        'fe82::/15', '2600:3c00::f03c:91ff:fe96:a267'.
 
         type: array (of IP addresses or CIDR ranges)
         vmtype: OS,KVM
@@ -1304,6 +1421,21 @@ tab-complete UUIDs rather than having to type them out for every command.
         create: yes
         update: yes
         default: the value of the nic_driver property on the VM
+
+    nics.*.mtu:
+
+        Sets the MTU for the network interface. The maximum MTU for a device is
+        determined based on its nic tag. If this property is not set, then it
+        defaults to the current MTU of the data link that the nic tag
+        corresponds to. The supported range of MTUs is from 1500-9000. This
+        property is not updated live with vmadm update. If a specific MTU has
+        not been requested, then this property is not present through get.
+
+        type: integer
+        vmtype: OS
+        listable: no
+        create: yes
+        update: yes
 
     nics.*.netmask
 
@@ -1446,11 +1578,11 @@ tab-complete UUIDs rather than having to type them out for every command.
 
     pid:
 
-        For KVM VMs that are currently running, this field indicates the PID of
-        the qemu process for the zone.
+        For VMs that are currently running, this field indicates the PID of the
+        `init` process for the zone.
 
         type: integer (PID)
-        vmtype: KVM
+        vmtype: OS,KVM
         listable: yes
         create: no
         update: no
@@ -1518,6 +1650,8 @@ tab-complete UUIDs rather than having to type them out for every command.
     resolvers:
 
         For OS VMs, this value sets the resolvers which get put into
+        /etc/resolv.conf at VM creation. If maintain_resolvers is set to
+        true, updating this property will also update the resolvers in
         /etc/resolv.conf. For KVM VMs these will get passed as the resolvers
         with DHCP responses.
 
@@ -1626,11 +1760,15 @@ tab-complete UUIDs rather than having to type them out for every command.
         for the /tmp filesystem. This is only available for OS VMs, and doesn't
         make any sense for KVM VMs.
 
+        If set to 0 this indicates that you would like to not have /tmp mounted
+        as tmpfs at all. When changing to/from a "0" value, the VM must be
+        rebooted in order for the change to take effect.
+
         vmtype: OS
         listable: yes
         create: yes
         update: yes
-        default: max_swap
+        default: max_physical_memory
 
     transition_expire:
 
@@ -1772,7 +1910,7 @@ tab-complete UUIDs rather than having to type them out for every command.
         The caveats and warnings in the zfs_root_compression section below also
         apply to this option.
 
-        type: string one of: "on,off,lzjb,gzip,gzip-N,zle"
+        type: string one of: "on,off,gzip,gzip-N,lz4,lzjb,zle"
         vmtype: OS
         listable: no
         create: yes
@@ -1814,7 +1952,7 @@ tab-complete UUIDs rather than having to type them out for every command.
         Specifies a compression algorithm used for this VM's root dataset. This
         option affects only the zoneroot dataset. Setting to 'on' is equivalent
         to setting to 'lzjb'. If you want more information about the specific
-        compression types, see the man page for zfs(1m).
+        compression types, see the man page for zfs(1M).
 
         WARNING: If you change this value for an existing VM, only *new* data
         will be compressed. It will not rewrite existing data compress.
@@ -1822,7 +1960,7 @@ tab-complete UUIDs rather than having to type them out for every command.
         NOTE: to change this property for KVM, see disks.*.zfs_compression
         above.
 
-        type: string one of: "on,off,lzjb,gzip,gzip-N,zle"
+        type: string one of: "on,off,gzip,gzip-N,lz4,lzjb,zle"
         vmtype: OS
         listable: no
         create: yes
@@ -2073,11 +2211,11 @@ The following exit values are returned:
 
 ## SEE ALSO
 
-    vmadmd(1m), zonecfg(1m), zoneadm(1m), zones(5)
+    vmadmd(1M), zonecfg(1M), zoneadm(1M), zones(5)
 
 ## NOTES
 
-Some of the vmadm commands depend on the vmadmd(1m) service:
+Some of the vmadm commands depend on the vmadmd(1M) service:
 
     svc/system/smartdc/vmadmd:default
 

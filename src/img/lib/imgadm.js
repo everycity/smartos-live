@@ -52,11 +52,11 @@ var mkdirp = require('mkdirp');
 var ProgressBar = require('progbar').ProgressBar;
 var imgapi = require('sdc-clients/lib/imgapi');
 var dsapi = require('sdc-clients/lib/dsapi');
-var VM = require('/usr/vm/node_modules/VM.js');
 var zfs = require('/usr/node/node_modules/zfs.js').zfs;
 var imgmanifest = require('imgmanifest');
 var genUuid = require('node-uuid');
 var rimraf = require('rimraf');
+var lock = require('/usr/img/node_modules/locker').lock;
 
 var common = require('./common'),
     NAME = common.NAME,
@@ -79,6 +79,9 @@ var VMADM_IMG_NAME_RE = /^([a-zA-Z][a-zA-Z\._-]*)\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9
 var UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 /* END JSSTYLED */
 
+var UA = 'imgadm/' + common.getVersion()
+    + ' (' + 'node/' + process.versions.node + '; '
+    + 'OpenSSL/' + process.versions.openssl + ')';
 
 
 // ---- internal support stuff
@@ -89,6 +92,20 @@ function _indent(s, indent) {
     return indent + lines.join('\n' + indent);
 }
 
+
+function getSysinfo(log, callback) {
+    assert.object(log, 'log');
+    assert.func(callback, 'callback');
+    exec('sysinfo', function (err, stdout, stderr) {
+        if (err) {
+            callback(err);
+        } else {
+            // Explicitly want to abort/coredump on this not being parsable.
+            var sysinfo = JSON.parse(stdout.trim());
+            callback(null, sysinfo);
+        }
+    });
+}
 
 /**
  * Call `zfs destroy -r` on the given dataset name.
@@ -351,7 +368,7 @@ IMGADM.prototype.init = function init(callback) {
                 next();
                 return;
             }
-            self.log.debug({path: CONFIG_PATH}, 'read config file');
+            self.log.trace({path: CONFIG_PATH}, 'read config file');
             fs.readFile(CONFIG_PATH, 'utf8', function (err, content) {
                 try {
                     var config = JSON.parse(content);
@@ -366,6 +383,20 @@ IMGADM.prototype.init = function init(callback) {
                 next();
             });
         });
+    }
+
+    function setUserAgent(next) {
+        self.userAgent = UA;
+        if (self.config && self.config.userAgentExtra) {
+            if (typeof (self.config.userAgentExtra) !== 'string') {
+                next(new errors.ConfigError(format(
+                    '"userAgentExtra" in config file "%s" is not a string',
+                    CONFIG_PATH)));
+                return;
+            }
+            self.userAgent += ' ' + self.config.userAgentExtra;
+        }
+        next();
     }
 
     function upgradeDb(next) {
@@ -391,7 +422,12 @@ IMGADM.prototype.init = function init(callback) {
         );
     }
 
-    async.series([loadConfig, upgradeDb, addSources], callback);
+    async.series([
+        loadConfig,
+        setUserAgent,
+        upgradeDb,
+        addSources
+    ], callback);
 };
 
 
@@ -705,14 +741,16 @@ IMGADM.prototype.clientFromSource = function clientFromSource(
             agent: false,
             url: baseNormUrl,
             log: self.log.child({component: 'api', source: source.url}, true),
-            rejectUnauthorized: (process.env.IMGADM_INSECURE !== '1')
+            rejectUnauthorized: (process.env.IMGADM_INSECURE !== '1'),
+            userAgent: self.userAgent
         });
     } else {
         self._clientCache[normUrl] = imgapi.createClient({
             agent: false,
             url: normUrl,
             log: self.log.child({component: 'api', source: source.url}, true),
-            rejectUnauthorized: (process.env.IMGADM_INSECURE !== '1')
+            rejectUnauthorized: (process.env.IMGADM_INSECURE !== '1'),
+            userAgent: self.userAgent
         });
     }
     callback(null, self._clientCache[normUrl]);
@@ -1051,21 +1089,83 @@ IMGADM.prototype.sourcesList = function sourcesList(callback) {
     async.forEach(
         self.sources,
         function oneSource(source, next) {
-            self.clientFromSource(source, function (cErr, client) {
+            var limit, marker;
+            var images = [];
+            var stop = false;
+            var client;
+
+            self.clientFromSource(source, function (cErr, _client) {
                 if (cErr) {
                     errs.push(cErr);
                     next();
                     return;
                 }
-                client.listImages(function (listErr, images) {
+
+                client = _client;
+                async.doWhilst(listImagesFromSource,
+                    function testAllImagesFetched() {
+                        return !stop;
+                    },
+                    function doneOneSource(whilstErr) {
+                        imageSetFromSourceUrl[source.url] = images;
+                        return next();
+                    }
+                );
+            });
+
+            function listImagesFromSource(whilstNext) {
+                var filterOpts = {};
+                // These options are passed once they are set for the first time
+                if (marker) {
+                    filterOpts.marker = marker;
+                }
+                if (limit) {
+                    filterOpts.limit = limit;
+                }
+
+                client.listImages(filterOpts, function (listErr, sImages, res) {
                     if (listErr) {
                         errs.push(self._errorFromClientError(
                             source.url, listErr));
+                        stop = true;
+                        return whilstNext();
                     }
-                    imageSetFromSourceUrl[source.url] = images || [];
-                    next();
+                    // On every query we do this:
+                    // - check if result size is less than limit (stop)
+                    // - if we have to keep going set a new marker,
+                    //   otherwise shift() because the first element is
+                    //   our marker
+                    // - concat to full list of images
+                    if (!limit) {
+                        limit = 1000;
+                    }
+                    if (sImages.length < limit) {
+                        stop = true;
+                    }
+                    // No marker means this is the first query and we
+                    // shouldn't shift() the array
+                    if (marker) {
+                        sImages.shift();
+                    }
+                    // We hit this when we either reached an empty page of
+                    // results or an empty first result
+                    if (!sImages.length) {
+                        stop = true;
+                        return whilstNext();
+                    }
+                    // Safety check if remote server doesn't support limit
+                    // and marker yet. In this case we would be iterating
+                    // over the same list of /images
+                    var newMarker = sImages[sImages.length - 1].uuid;
+                    if (marker && marker === newMarker) {
+                        stop = true;
+                        return whilstNext();
+                    }
+                    marker = newMarker;
+                    images = images.concat(sImages);
+                    return whilstNext();
                 });
-            });
+            }
         },
         function done(err) {
             if (!err && errs.length) {
@@ -1100,17 +1200,24 @@ IMGADM.prototype.sourcesList = function sourcesList(callback) {
 /**
  * Get info (mainly manifest data) on the given image UUID from sources.
  *
- * @param uuid {String}
- * @param ensureActive {Boolean} Set to true to skip inactive images.
+ * @param options {Object}
+ *      - @param uuid {String} Required. The image UUID to get.
+ *      - @param ensureActive {Boolean} Required. Set to true to skip inactive
+ *        images.
+ *      - @param sources {Array} Optional. An optional override to the set
+ *        of sources to search. Defaults to `self.sources`.
  * @param callback {Function} `function (err, imageInfo)` where `imageInfo`
  *      is `{manifest: <manifest>, source: <source>}`
  */
-IMGADM.prototype.sourcesGet
-        = function sourcesGet(uuid, ensureActive, callback) {
-    assert.string(uuid, 'uuid');
-    assert.bool(ensureActive, 'ensureActive');
+IMGADM.prototype.sourcesGet = function sourcesGet(options, callback) {
+    assert.object(options, 'options');
+    assert.string(options.uuid, 'options.uuid');
+    assert.bool(options.ensureActive, 'options.ensureActive');
+    assert.optionalArrayOfObject(options.sources, 'options.sources');
     assert.func(callback, 'callback');
     var self = this;
+    var uuid = options.uuid;
+    var ensureActive = options.ensureActive;
     var errs = [];
 
     if (self.sources.length === 0) {
@@ -1120,7 +1227,7 @@ IMGADM.prototype.sourcesGet
 
     var imageInfo = null;
     async.forEachSeries(
-        self.sources,
+        options.sources || self.sources,
         function oneSource(source, next) {
             if (imageInfo) {
                 next();
@@ -1345,6 +1452,11 @@ IMGADM.prototype.installImage = function installImage(options, callback) {
 };
 
 
+IMGADM.prototype._lockPathFromUuid = function _lockPathFromUuid(uuid) {
+    assertUuid(uuid, 'uuid');
+    return '/var/run/img.' + uuid + '.import.lock';
+};
+
 
 /**
  * Install an image from the given manifest and either a local `file` or
@@ -1367,7 +1479,12 @@ IMGADM.prototype._installImage = function _installImage(options, callback) {
     var uuid = options.manifest.uuid;
     assertUuid(uuid, 'options.manifest.uuid');
     var log = self.log;
-    log.debug(options, '_installImage');
+    log.debug({
+        zpool: options.zpool,
+        manifest: options.manifest,
+        sourceUrl: options.source && options.source.url,
+        file: options.file
+    }, '_installImage');
 
     // Upgrade manifest if required.
     try {
@@ -1389,6 +1506,12 @@ IMGADM.prototype._installImage = function _installImage(options, callback) {
     var md5Hash = null;
     var sha1Hash = null;
     var md5Expected = null;
+    var lockPath = self._lockPathFromUuid(uuid);
+    var unlock;
+    var doTheImport;  // determined after getting the import lock
+    var fileInfo;
+    var localOriginInfo;
+    var acquireLogTimeout;
 
     async.waterfall([
         /**
@@ -1399,16 +1522,19 @@ IMGADM.prototype._installImage = function _installImage(options, callback) {
          */
         function getOrigin(next) {
             if (!manifest.origin) {
-                next(null, null);
+                next();
                 return;
             }
             var getOpts = {
                 uuid: manifest.origin,
                 zpool: options.zpool
             };
-            self.getImage(getOpts, next);
+            self.getImage(getOpts, function (getErr, oi) {
+                localOriginInfo = oi;
+                next(getErr);
+            });
         },
-        function ensureOrigin(localOriginInfo, next) {
+        function ensureOrigin(next) {
             if (!manifest.origin) {
                 next();
                 return;
@@ -1422,14 +1548,22 @@ IMGADM.prototype._installImage = function _installImage(options, callback) {
                 assert.ok(options.source);
 
                 logCb(format('Origin image %s is not installed: '
-                    + 'searching sources', manifest.origin));
-                self.sourcesGet(manifest.origin, true,
-                        function (err, originInfo) {
+                    + 'searching source', manifest.origin));
+                var getOpts = {
+                    uuid: manifest.origin,
+                    ensureActive: true,
+                    sources: [imageInfo.source]
+                };
+                self.sourcesGet(getOpts, function (err, originInfo) {
                     if (err) {
                         next(err);
                         return;
+                    } else if (!originInfo) {
+                        next(new errors.OriginNotFoundInSourceError(
+                            manifest.origin, imageInfo.source));
+                        return;
                     }
-                    logCb(format('Importing origin image %s (%s %s) from "%s"',
+                    logCb(format('Importing origin image %s (%s@%s) from "%s"',
                         originInfo.manifest.uuid, originInfo.manifest.name,
                         originInfo.manifest.version, originInfo.source.url));
                     var impOpts = {
@@ -1443,7 +1577,58 @@ IMGADM.prototype._installImage = function _installImage(options, callback) {
             }
         },
 
+        function acquireLock(next) {
+            acquireLogTimeout = setTimeout(function () {
+                logCb(format('Waiting for image %s import lock', uuid));
+            }, 1000);
+            log.debug({lockPath: lockPath}, 'acquire lock');
+            lock(lockPath, function (lockErr, unlock_) {
+                if (lockErr) {
+                    next(new errors.InternalError({
+                        message: 'error acquiring lock',
+                        lockPath: lockPath,
+                        cause: lockErr
+                    }));
+                    return;
+                }
+                log.debug({lockPath: lockPath}, 'acquired lock');
+                if (acquireLogTimeout) {
+                    clearTimeout(acquireLogTimeout);
+                }
+                unlock = unlock_;
+                next();
+            });
+        },
+
+        /**
+         * While waiting for the lock the image could have been imported.
+         */
+        function checkIfImportedAfterLock(next) {
+            var getOpts = {
+                uuid: uuid,
+                zpool: options.zpool
+            };
+            self.getImage(getOpts, function (getErr, ii) {
+                if (getErr) {
+                    next(getErr);
+                    return;
+                } else if (ii) {
+                    logCb(format('Image %s (%s %s) was imported while '
+                        + 'waiting on lock', uuid, ii.manifest.name,
+                        ii.manifest.version));
+                    doTheImport = false;
+                } else {
+                    doTheImport = true;
+                }
+                next();
+            });
+        },
+
         function getImageFileInfo(next) {
+            if (!doTheImport) {
+                next();
+                return;
+            }
             if (options.file) {
                 fs.stat(options.file, function (statErr, stats) {
                     if (statErr) {
@@ -1451,10 +1636,11 @@ IMGADM.prototype._installImage = function _installImage(options, callback) {
                         return;
                     }
                     var stream = fs.createReadStream(options.file);
-                    next(null, {
+                    fileInfo = {
                         stream: stream,
                         size: stats.size
-                    });
+                    };
+                    next();
                 });
             } else {
                 assert.ok(options.source);
@@ -1470,11 +1656,12 @@ IMGADM.prototype._installImage = function _installImage(options, callback) {
                             + 'did not include a "Content-MD5"'));
                         return;
                     }
-                    next(null, {
+                    fileInfo = {
                         stream: stream,
                         size: Number(stream.headers['content-length']),
                         contentMd5: stream.headers['content-md5']
-                    });
+                    };
+                    next();
                 });
             }
         },
@@ -1484,7 +1671,12 @@ IMGADM.prototype._installImage = function _installImage(options, callback) {
          *      | inflator (if necessary) \     [B]
          *      | zfs recv                      [C]
          */
-        function recvTheDataset(fileInfo, next) {
+        function recvTheDataset(next) {
+            if (!doTheImport) {
+                next();
+                return;
+            }
+
             // To complete this stage we want to wait for all of:
             // 1. the 'zfs receive' process to 'exit'.
             // 2. the compressor process to 'exit' (if we are compressing)
@@ -1606,6 +1798,11 @@ IMGADM.prototype._installImage = function _installImage(options, callback) {
          * Ensure the streamed image data matches expected checksums.
          */
         function checksum(next) {
+            if (!doTheImport) {
+                next();
+                return;
+            }
+
             var err;
 
             // We have a content-md5 from the headers if the is was streamed
@@ -1641,6 +1838,11 @@ IMGADM.prototype._installImage = function _installImage(options, callback) {
          * renaming it if necessary.
          */
         function ensureFinalSnapshot(next) {
+            if (!doTheImport) {
+                next();
+                return;
+            }
+
             var properties = ['name', 'children'];
             getZfsDataset(partialDsName, properties, function (zErr, ds) {
                 if (zErr) {
@@ -1669,6 +1871,11 @@ IMGADM.prototype._installImage = function _installImage(options, callback) {
          * the final name.
          */
         function renameToFinalDsName(next) {
+            if (!doTheImport) {
+                next();
+                return;
+            }
+
             var cmd = format('/usr/sbin/zfs rename %s %s',
                 partialDsName, dsName);
             log.trace({cmd: cmd}, 'rename tmp image');
@@ -1686,6 +1893,11 @@ IMGADM.prototype._installImage = function _installImage(options, callback) {
         },
 
         function saveManifestToDb(next) {
+            if (!doTheImport) {
+                next();
+                return;
+            }
+
             // On error, rollback uses `partialDsName`. Now that we've renamed
             // the dataset, make sure that *it* gets cleaned if saving the
             // manifest fails.
@@ -1702,28 +1914,76 @@ IMGADM.prototype._installImage = function _installImage(options, callback) {
                 }
             });
         }
-    ], function doneImport(err) {
-        if (bar) {
-            bar.end();
-        }
 
-        if (err && partialDsName) {
-            // Rollback the currently installed dataset, if necessary.
-            // Silently fail here (i.e. only log at trace level) because
-            // it is possible we errored out before the -partial dataset
-            // was created.
-            var cmd = format('/usr/sbin/zfs destroy -r %s', partialDsName);
-            exec(cmd, function (rollbackErr, stdout, stderr) {
-                if (rollbackErr) {
-                    log.trace({cmd: cmd, err: rollbackErr, stdout: stdout,
-                        stderr: stderr, rollbackDsName: partialDsName},
-                        'error destroying dataset while rolling back');
+    ], function finishUp(err) {
+        async.series([
+            function stopProgressBar(next) {
+                if (bar) {
+                    bar.end();
                 }
-                callback(err);
-            });
-        } else {
-            callback(err);
-        }
+                next();
+            },
+            function rollbackPartialDsIfNecessary(next) {
+                if (err && partialDsName) {
+                    // Rollback the currently installed dataset, if necessary.
+                    // Silently fail here (i.e. only log at trace level) because
+                    // it is possible we errored out before the -partial dataset
+                    // was created.
+                    var cmd = format('/usr/sbin/zfs destroy -r %s',
+                        partialDsName);
+                    exec(cmd, function (rollbackErr, stdout, stderr) {
+                        if (rollbackErr) {
+                            log.trace({cmd: cmd, err: rollbackErr,
+                                stdout: stdout,
+                                stderr: stderr,
+                                rollbackDsName: partialDsName},
+                                'error destroying dataset while rolling back');
+                        }
+                        next();
+                    });
+                } else {
+                    next();
+                }
+            },
+            function releaseLock(next) {
+                if (!unlock) {
+                    next();
+                    return;
+                }
+                log.debug({lockPath: lockPath}, 'releasing lock');
+                unlock(function (unlockErr) {
+                    if (unlockErr) {
+                        next(new errors.InternalError({
+                            message: 'error releasing lock',
+                            lockPath: lockPath,
+                            cause: unlockErr
+                        }));
+                        return;
+                    }
+                    log.debug({lockPath: lockPath}, 'released lock');
+                    next();
+                });
+            },
+            function noteCompletion(next) {
+                if (doTheImport) {
+                    logCb(format('%s image %s (%s@%s) to "%s/%s"',
+                        (options.file ? 'Installed' : 'Imported'),
+                        uuid,
+                        manifest.name,
+                        manifest.version,
+                        options.zpool,
+                        uuid));
+                }
+                next();
+            }
+        ], function done(finishUpErr) {
+            // We shouldn't ever get a `finishUpErr`. Let's be loud if we do.
+            if (finishUpErr) {
+                log.fatal({err: finishUpErr},
+                    'unexpected error finishing up image import');
+            }
+            callback(err || finishUpErr);
+        });
     });
 };
 
@@ -1805,7 +2065,11 @@ IMGADM.prototype.updateImages = function updateImages(options, callback) {
         var snapshots;
         async.series([
             function getSourceInfo(next) {
-                self.sourcesGet(uuid, true, function (sGetErr, sImageInfo) {
+                var getOpts = {
+                    uuid: uuid,
+                    ensureActive: false
+                };
+                self.sourcesGet(getOpts, function (sGetErr, sImageInfo) {
                     if (sGetErr) {
                         next(sGetErr);
                         return;
@@ -1970,8 +2234,21 @@ IMGADM.prototype.updateImages = function updateImages(options, callback) {
 
 
 /**
- * Create an image from the given (prepared and shutdown) VM and manifest
- * data.
+ * Create an image from the given VM and manifest data. There are two basic
+ * calling modes here:
+ * 1. A `options.prepareScript` is provided to be used to prepare the VM
+ *    before image creation. The running of the prepare script is gated by
+ *    a snapshot and rollback so that the end result is a VM that is unchanged.
+ *    This is desireable because (a) it is easier (fewer steps to follow
+ *    for imaging) and (b) the typical preparation script is destructive, so
+ *    gating with snapshotting makes the original VM re-usable. Note that
+ *    the snapshotting and preparation involve reboots of the VM (typically
+ *    two reboots).
+ *    Dev Note: This mode with prepareScript is called "autoprep" in vars
+ *    below.
+ * 2. The VM is already prepared (via the typical prepare-image scripts,
+ *    see <https://download.joyent.com/pub/prepare-image/>) and shutdown.
+ *    For this "mode" do NOT pass in `options.prepareScript`.
  *
  * @param options {Object}
  *      - @param vmUuid {String} UUID of the VM from which to create the image.
@@ -1985,6 +2262,12 @@ IMGADM.prototype.updateImages = function updateImages(options, callback) {
  *        to save the manifest and image files.
  *      - @param incremental {Boolean} Optional. Default false. Create an
  *        incremental image.
+ *      - @param prepareScript {String} Optional. A script to run to prepare
+ *        the VM for image. See note above.
+ *      - @param prepareTimeout {Number} Optional. Default is 300 (5 minutes).
+ *        The number of seconds before timing out any prepare *stage*. The
+ *        preparation stages are (starting from the VM being shutdown):
+ *        prepare-image running, prepare-image complete, VM stopped.
  * @param callback {Function} `function (err, imageInfo)` where imageInfo
  *      has `manifest` (the manifest object), `manifestPath` (the saved
  *      manifest path) and `filePath` (the saved image file path) keys.
@@ -1997,32 +2280,36 @@ IMGADM.prototype.createImage = function createImage(options, callback) {
     assert.optionalFunc(options.logCb, 'options.logCb');
     assert.optionalString(options.compression, 'options.compression');
     assert.optionalBool(options.incremental, 'options.incremental');
+    assert.optionalString(options.prepareScript, 'options.prepareScript');
+    assert.optionalNumber(options.prepareTimeout, 'options.prepareTimeout');
+    assert.optionalNumber(options.maxOriginDepth, 'options.maxOriginDepth');
+    var log = self.log;
     var vmUuid = options.vmUuid;
     var incremental = options.incremental || false;
     var logCb = options.logCb || function () {};
+    var prepareScript = options.prepareScript;
+    var prepareTimeout = options.prepareTimeout || 300;  // in seconds
+    var maxOriginDepth = options.maxOriginDepth;
 
     var vmInfo;
-    var vmZfsFilesystem;
+    var sysinfo;
+    var vmZfsFilesystemName;
+    var vmZfsSnapnames;
     var originInfo;
+    var originFinalSnap;
     var imageInfo = {};
-    var snapshot;
+    var finalSnapshot;
     var toCleanup = {};
     async.waterfall([
-        // Validate this is a stopped VM.
         function validateVm(next) {
-            // Note: Don't pass `self.log` to VM.js because we don't want
-            // any logging on our stderr right now for a cli -- that is
-            // until imgadm has a better logging story.
-            VM.load(vmUuid, /* { log: self.log }, */ function (loadErr, vm) {
-                if (loadErr) {
-                    if (loadErr.code === 'ENOENT') {
-                        next(new errors.VmNotFoundError(vmUuid));
-                    } else {
-                        next(new errors.InternalError(loadErr));
-                    }
+            common.vmGet(vmUuid, {log: log}, function (err, vm) {
+                // Currently `vmGet` doesn't distinguish bwtn some unexpected
+                // error and no such VM.
+                if (err) {
+                    next(new errors.VmNotFoundError(vmUuid));
                     return;
                 }
-                if (vm.state !== 'stopped') {
+                if (!prepareScript && vm.state !== 'stopped') {
                     next(new errors.VmNotStoppedError(vmUuid));
                     return;
                 }
@@ -2038,18 +2325,18 @@ IMGADM.prototype.createImage = function createImage(options, callback) {
                         if (vmInfo.disks[i].image_uuid) {
                             var disk = vmInfo.disks[i];
                             opts = {uuid: disk.image_uuid, zpool: disk.zpool};
-                            vmZfsFilesystem = disk.zfs_filesystem;
+                            vmZfsFilesystemName = disk.zfs_filesystem;
                             break;
                         }
                     }
                 }
             } else {
                 opts = {uuid: vmInfo.image_uuid, zpool: vmInfo.zpool};
-                vmZfsFilesystem = vmInfo.zfs_filesystem;
+                vmZfsFilesystemName = vmInfo.zfs_filesystem;
             }
             if (!opts) {
                 // Couldn't find an origin image.
-                self.log.debug('no origin image found');
+                log.debug('no origin image found');
                 next();
                 return;
             }
@@ -2058,9 +2345,73 @@ IMGADM.prototype.createImage = function createImage(options, callback) {
                     next(getErr);
                     return;
                 }
-                self.log.debug({imageInfo: ii}, 'origin image');
+                log.debug({imageInfo: ii}, 'origin image');
                 originInfo = ii;
                 next();
+            });
+        },
+        function validateMaxOriginDepth(next) {
+            // If there is no origin, no depth was passed or origin doesn't
+            // have an origin itself
+            if (!originInfo || !maxOriginDepth || !originInfo.manifest.origin) {
+                next();
+                return;
+            }
+            var currentDepth = 1;
+            // One origin is already one level deep
+            var currentOrigin = originInfo;
+            var foundFirstOrigin = false;
+
+            // Recursively call getImage until we find the source origin
+            async.whilst(
+                function () {
+                    return currentDepth <= maxOriginDepth && !foundFirstOrigin;
+                },
+                function (cb) {
+                    if (!currentOrigin.manifest.origin) {
+                        foundFirstOrigin = true;
+                        cb();
+                        return;
+                    }
+                    var getOpts = {
+                        uuid: currentOrigin.manifest.origin,
+                        zpool: currentOrigin.zpool
+                    };
+                    self.getImage(getOpts, function (getErr, origImg) {
+                        if (getErr) {
+                            cb(getErr);
+                            return;
+                        }
+                        currentDepth++;
+                        currentOrigin = origImg;
+                        cb();
+                    });
+                },
+                function (err) {
+                    if (err) {
+                        next(err);
+                        return;
+                    }
+                    // If we exited the loop because we hit maxOriginDepth
+                    if (currentDepth > maxOriginDepth) {
+                        next(new errors.MaxOriginDepthError(maxOriginDepth));
+                        return;
+                    } else {
+                        next();
+                        return;
+                    }
+                }
+            );
+        },
+        function getSystemInfo(next) {
+            if (vmInfo.brand === 'kvm') {
+                next();
+                return;
+            }
+            // We need `sysinfo` for smartos images. See below.
+            getSysinfo(log, function (err, sysinfo_) {
+                sysinfo = sysinfo_;
+                next(err);
             });
         },
         function gatherManifest(next) {
@@ -2080,6 +2431,7 @@ IMGADM.prototype.createImage = function createImage(options, callback) {
                     'users', 'billing_tags', 'traits', 'generate_passwords',
                     'inherited_directories', 'nic_driver', 'disk_driver',
                     'cpu_type', 'image_size'];
+                // TODO Should this *merge* requirements?
                 INHERITED_FIELDS.forEach(function (field) {
                     if (!m.hasOwnProperty(field)
                         && originManifest.hasOwnProperty(field))
@@ -2093,12 +2445,28 @@ IMGADM.prototype.createImage = function createImage(options, callback) {
                     }
                 });
             }
+            if (vmInfo.brand !== 'kvm' /* i.e. this is a smartos image */
+                && !(options.manifest.requirements
+                    && options.manifest.requirements.min_platform))
+            {
+                // Unless an explicit min_platform is provided (possibly empty)
+                // the min_platform for a SmartOS image must be the current
+                // platform, b/c that's the SmartOS binary compat story.
+                if (!m.requirements)
+                    m.requirements = {};
+                m.requirements.min_platform = {};
+                m.requirements.min_platform[sysinfo['SDC Version']]
+                    = sysinfo['Live Image'];
+                log.debug({min_platform: m.requirements.min_platform},
+                    'set smartos image min_platform to current');
+            }
             if (incremental) {
                 if (!originInfo) {
                     next(new errors.VmHasNoOriginError(vmUuid));
                     return;
+                } else {
+                    m.origin = originInfo.manifest.uuid;
                 }
-                m.origin = originInfo.manifest.uuid;
             }
             logCb(format('Manifest:\n%s',
                 _indent(JSON.stringify(m, null, 2))));
@@ -2117,54 +2485,267 @@ IMGADM.prototype.createImage = function createImage(options, callback) {
                 next();
                 return;
             }
-            var originFinalSnap = format('%s/%s@final', originInfo.zpool,
-                originInfo.manifest.uuid);
+            originFinalSnap = format('%s/%s@final', originInfo.zpool,
+                imageInfo.manifest.origin);
             getZfsDataset(originFinalSnap, function (err, ds) {
                 if (err) {
                     next(err);
                 } else if (!ds) {
                     next(new errors.OriginHasNoFinalSnapshotError(
-                        originInfo.manifest.uuid));
+                        imageInfo.manifest.origin));
                 } else {
                     next();
                 }
             });
         },
-        function renameFinalSnapshotOutOfTheWay(next) {
-            // We use a snapshot named '@final'. If there is an existing one,
-            // rename it to '@final-$timestamp'.
+
+        function getVmZfsDataset(next) {
+            // Get snapshot/children dataset details on the ZFS filesystem with
+            // which we are going to be mucking.
             var properties = ['name', 'children'];
-            getZfsDataset(vmZfsFilesystem, properties, function (zErr, ds) {
+            getZfsDataset(vmZfsFilesystemName, properties, function (zErr, ds) {
                 if (zErr) {
                     next(zErr);
                     return;
                 }
                 var snapshots = ds.children.snapshots;
-                var snapnames = snapshots.map(
+                vmZfsSnapnames = snapshots.map(
                     function (n) { return '@' + n.split(/@/g).slice(-1)[0]; });
-                if (snapnames.indexOf('@final') == -1) {
-                    next();
+                next();
+            });
+        },
+
+        // If `prepareScript` was given, here is where we need to:
+        // - snapshot the VM
+        // - prepare the VM
+        function autoprepStopVmIfNecessary(next) {
+            if (!prepareScript) {
+                next();
+            } else if (vmInfo.state !== 'stopped') {
+                logCb(format('Stopping VM %s to snapshot it', vmUuid));
+                toCleanup.autoprepStartVm = vmUuid; // Re-start it when done.
+                common.vmStop(vmUuid, {log: log}, next);
+            } else {
+                next();
+            }
+        },
+        function autoprepSnapshotDatasets(next) {
+            if (!prepareScript) {
+                next();
+                return;
+            }
+
+            var toSnapshot = [vmInfo.zfs_filesystem];
+            if (vmInfo.brand === 'kvm' && vmInfo.disks) {
+                for (var i = 0; i < vmInfo.disks.length; i++) {
+                    toSnapshot.push(vmInfo.disks[i].zfs_filesystem);
+                }
+            }
+
+            var snapname = '@imgadm-create-pre-prepare';
+            logCb(format('Snapshotting VM "%s" to %s', vmUuid, snapname));
+            toCleanup.autoprepSnapshots = [];
+            async.eachSeries(
+                toSnapshot,
+                function snapshotOne(ds, nextSnapshot) {
+                    var snap = ds + snapname;
+                    zfs.snapshot(snap, function (zfsErr) {
+                        if (zfsErr) {
+                            nextSnapshot(new errors.InternalError({
+                                message: 'error creating snapshot',
+                                snap: snap,
+                                cause: zfsErr
+                            }));
+                            return;
+                        }
+                        toCleanup.autoprepSnapshots.push(snap);
+                        nextSnapshot();
+                    });
+                },
+                next);
+        },
+        function autoprepSetOperatorScript(next) {
+            if (!prepareScript) {
+                next();
+                return;
+            }
+            var update = {
+                set_internal_metadata: {
+                    'operator-script': prepareScript
+                }
+            };
+            log.debug('set operator-script');
+            common.vmUpdate(vmUuid, update, {log: log}, next);
+        },
+        /**
+         * "Prepare" the VM by booting it, which should run the
+         * operator-script to prepare and shutdown. We track progress via
+         * the 'prepare-image:state' and 'prepare-image:error' keys on
+         * customer_metadata. See the "PREPARE IMAGE SCRIPT" section in the
+         * man page for the contract.
+         */
+        function autoprepClearMdata(next) {
+            if (!prepareScript) {
+                next();
+                return;
+            }
+            var update = {
+                remove_customer_metadata: [
+                    'prepare-image:state',
+                    'prepare-image:error'
+                ]
+            };
+            log.debug('create prepare-image:* customer_metadata');
+            common.vmUpdate(vmUuid, update, {log: log}, next);
+        },
+        function autoprepBoot(next) {
+            if (!prepareScript) {
+                next();
+                return;
+            }
+            logCb(format('Preparing VM %s (starting it)', vmUuid));
+            common.vmStart(vmUuid, {log: log}, next);
+        },
+        function autoprepWaitForRunning(next) {
+            if (!prepareScript) {
+                next();
+                return;
+            }
+            var opts = {
+                log: log,
+                key: 'prepare-image:state',
+                // Don't explicitly check for value=running here because it is
+                // fine if it blows by to 'success' between our polling.
+                timeout: prepareTimeout * 1000,
+                interval: 2000
+            };
+            log.debug('wait for up to %ds for prepare-image:state signal '
+                + 'from operator-script', prepareTimeout);
+            common.vmWaitForCustomerMetadatum(vmUuid, opts, function (err, vm) {
+                if (err) {
+                    if (err.code === 'Timeout') {
+                        /**
+                         * This could mean any of:
+                         * - the VM has old guest tools that either don't run
+                         *   an 'sdc:operator-script' or don't have a working
+                         *   'mdata-put'
+                         * - the VM boot + time to get to prepare-image script
+                         *   setting 'prepare-image:state' mdata takes >5
+                         *   minutes
+                         * - the prepare-image script has a bug in that it does
+                         *   not set the 'prepare-image:state' mdata key to
+                         *   'running'
+                         * - the prepare-image script crashed early
+                         */
+                        logCb('Timeout waiting for prepare-image script to '
+                            + 'signal it started');
+                        log.debug('timeout waiting for operator-script to '
+                            + 'set prepare-image:state');
+                        next(new errors.PrepareImageDidNotRunError(vmUuid));
+                    } else {
+                        log.debug(err, 'unexpected error waiting for '
+                            + 'operator-script to set prepare-image:state');
+                        next(err);
+                    }
                     return;
                 }
-                var curr = vmZfsFilesystem + '@final';
-                var outofway = curr + '-' + Date.now();
-                logCb(format('Moving existing @final snapshot out of the '
-                    + 'way to "%s"', outofway));
-                zfsRenameSnapshot(curr, outofway,
-                    {recursive: true, log: self.log}, next);
+                logCb('Prepare script is running');
+                vmInfo = vm;
+                next();
             });
+        },
+        function autoprepWaitForComplete(next) {
+            if (!prepareScript) {
+                next();
+                return;
+            }
+            var opts = {
+                log: log,
+                key: 'prepare-image:state',
+                values: ['success', 'error'],
+                timeout: prepareTimeout * 1000
+            };
+            log.debug('wait for up to %ds for prepare-image:state of "error" '
+                + 'or "success"', prepareTimeout);
+            common.vmWaitForCustomerMetadatum(vmUuid, opts, function (err, vm) {
+                if (err) {
+                    next(new errors.PrepareImageError(err, vmUuid,
+                        'prepare-image script did not complete'));
+                    return;
+                }
+                vmInfo = vm;
+                var cm = vm.customer_metadata;
+                log.debug({
+                    'prepare-image:state': cm['prepare-image:state'],
+                    'prepare-image:error': cm['prepare-image:error'],
+                    'prepare-image:progress': cm['prepare-image:progress']
+                }, 'prepare-image:state is set');
+                if (cm['prepare-image:state'] === 'error') {
+                    next(new errors.PrepareImageError(vmUuid,
+                        cm['prepare-image:error'] || ''));
+                } else {
+                    logCb('Prepare script succeeded');
+                    next();
+                }
+            });
+        },
+        function autoprepWaitForVmStopped(next) {
+            if (!prepareScript) {
+                next();
+                return;
+            }
+            var opts = {
+                state: 'stopped',
+                timeout: prepareTimeout * 1000,
+                log: log
+            };
+            log.debug('wait for up to %ds for VM to stop', prepareTimeout);
+            common.vmWaitForState(vmUuid, opts, function (err, vm) {
+                if (err) {
+                    next(new errors.PrepareImageError(err, vmUuid,
+                        'VM did not shutdown'));
+                    return;
+                }
+                var cm = vm.customer_metadata;
+                log.debug({
+                    'prepare-image:state': cm['prepare-image:state'],
+                    'prepare-image:error': cm['prepare-image:error'],
+                    'prepare-image:progress': cm['prepare-image:progress']
+                }, 'prepare-image stopped VM');
+                logCb('Prepare script stopped VM ' + vmUuid);
+                next();
+            });
+        },
+
+        function renameFinalSnapshotOutOfTheWay(next) {
+            // We use a snapshot named '@final'. If there is an existing one,
+            // rename it to '@final-$timestamp'.
+            if (vmZfsSnapnames.indexOf('@final') == -1) {
+                next();
+                return;
+            }
+            var curr = vmZfsFilesystemName + '@final';
+            var outofway = curr + '-' + Date.now();
+            logCb(format('Moving existing @final snapshot out of the '
+                + 'way to "%s"', outofway));
+            zfsRenameSnapshot(curr, outofway,
+                {recursive: true, log: log}, next);
         },
         function snapshotVm(next) {
             // We want '@final' to be the snapshot in the created image -- see
             // the notes in _installImage.
-            snapshot = format('%s@final', vmZfsFilesystem);
-            logCb(format('Snapshotting to "%s"', snapshot));
-            zfs.snapshot(snapshot, function (zfsErr) {
+            finalSnapshot = format('%s@final', vmZfsFilesystemName);
+            logCb(format('Snapshotting to "%s"', finalSnapshot));
+            zfs.snapshot(finalSnapshot, function (zfsErr) {
                 if (zfsErr) {
-                    next(new errors.InternalError(zfsErr));
+                    next(new errors.InternalError({
+                        message: 'error creating final snapshot',
+                        finalSnapshot: finalSnapshot,
+                        cause: zfsErr
+                    }));
                     return;
                 }
-                toCleanup.snapshot = snapshot;
+                toCleanup.finalSnapshot = finalSnapshot;
                 next();
             });
         },
@@ -2190,7 +2771,7 @@ IMGADM.prototype.createImage = function createImage(options, callback) {
                     /* jsl:pass */
                 } else if (err) {
                     finished = true;
-                    self.log.trace({err: err}, 'sendImageFile err');
+                    log.trace({err: err}, 'sendImageFile err');
                     next(err);
                 } else if (numFinishes >= numToFinish) {
                     finished = true;
@@ -2240,10 +2821,10 @@ IMGADM.prototype.createImage = function createImage(options, callback) {
                             + '    compression: %s\n'
                             + '    stderr:\n%s', code, compression,
                             _indent(compStderrChunks.join(''), '        '));
-                        self.log.debug(msg);
+                        log.debug(msg);
                         finish(new errors.InternalError({message: msg}));
                     } else {
-                        self.log.trace({compression: compression},
+                        log.trace({compression: compression},
                             'compressor exited successfully');
                         finish();
                     }
@@ -2254,10 +2835,9 @@ IMGADM.prototype.createImage = function createImage(options, callback) {
             var zfsArgs = ['send'];
             if (incremental) {
                 zfsArgs.push('-i');
-                zfsArgs.push(format('%s/%s@final', originInfo.zpool,
-                    originInfo.manifest.uuid));
+                zfsArgs.push(originFinalSnap);
             }
-            zfsArgs.push(snapshot);
+            zfsArgs.push(finalSnapshot);
             self.log.debug({cmd: ['/usr/sbin/zfs'].concat(zfsArgs)},
                 'spawn zfs send');
             var zfsSend = spawn('/usr/sbin/zfs', zfsArgs);
@@ -2362,13 +2942,6 @@ IMGADM.prototype.createImage = function createImage(options, callback) {
                 });
                 toCleanup.compressor.kill('SIGKILL');
             },
-            function cleanupSnapshot(next) {
-                if (!toCleanup.snapshot) {
-                    next();
-                    return;
-                }
-                zfsDestroy(toCleanup.snapshot, self.log, next);
-            },
             function cleanupImageFile(next) {
                 if (!toCleanup.filePath) {
                     next();
@@ -2377,13 +2950,71 @@ IMGADM.prototype.createImage = function createImage(options, callback) {
                 self.log.debug('remove incomplete image file "%s"',
                     toCleanup.filePath);
                 rimraf(toCleanup.filePath, next);
+            },
+            function cleanupFinalSnapshot(next) {
+                if (!toCleanup.finalSnapshot) {
+                    next();
+                    return;
+                }
+                zfsDestroy(toCleanup.finalSnapshot, self.log, next);
+            },
+            /**
+             * Restoring the VM dataset(s) to their previous state in 3 parts:
+             * 1. ensure the VM is stopped (it is surprising if it isn't)
+             * 2. rollback all the zfs filesystems
+             * 3. destroy the snaps
+             */
+            function cleanupAutoprepSnapshots1(next) {
+                if (!toCleanup.autoprepSnapshots) {
+                    next();
+                    return;
+                }
+                logCb(format('Rollback VM %s to pre-prepare snapshot (cleanup)',
+                    vmUuid));
+                var opts = {log: self.log};
+                common.vmHaltIfNotStopped(vmUuid, opts, next);
+            },
+            function cleanupAutoprepSnapshots2(next) {
+                if (!toCleanup.autoprepSnapshots) {
+                    next();
+                    return;
+                }
+                async.eachSeries(
+                    toCleanup.autoprepSnapshots,
+                    function rollbackOne(snap, nextSnapshot) {
+                        self.log.debug('zfs rollback', snap);
+                        zfs.rollback(snap, nextSnapshot);
+                    },
+                    next);
+            },
+            function cleanupAutoprepSnapshots3(next) {
+                if (!toCleanup.autoprepSnapshots) {
+                    next();
+                    return;
+                }
+                async.eachSeries(
+                    toCleanup.autoprepSnapshots,
+                    function destroyOne(snap, nextSnapshot) {
+                        zfsDestroy(snap, self.log, nextSnapshot);
+                    },
+                    next);
+            },
+            function cleanupAutoprepStartVm(next) {
+                if (!toCleanup.autoprepStartVm) {
+                    next();
+                    return;
+                }
+                logCb(format('Restarting VM %s (cleanup)',
+                    toCleanup.autoprepStartVm));
+                common.vmStart(toCleanup.autoprepStartVm,
+                    {log: self.log}, next);
             }
         ], function (cleanErr) {
-            if (cleanErr) {
-                self.log.warn(cleanErr,
-                    'error cleaning up during image creation');
+            var e = err || cleanErr;
+            if (err && cleanErr) {
+                e = new errors.MultiError([err, cleanErr]);
             }
-            callback(err, imageInfo);
+            callback(e, imageInfo);
         });
     });
 };
@@ -2419,7 +3050,9 @@ IMGADM.prototype.publishImage = function publishImage(opts, callback) {
     var client = imgapi.createClient({
         agent: false,
         url: opts.url,
-        log: self.log.child({component: 'api', url: opts.url}, true)
+        log: self.log.child({component: 'api', url: opts.url}, true),
+        rejectUnauthorized: (process.env.IMGADM_INSECURE !== '1'),
+        userAgent: self.userAgent
     });
     var uuid = manifest.uuid;
     var rollbackImage;
@@ -2553,7 +3186,7 @@ function createTool(options, callback) {
             callback(err);
             return;
         }
-        tool.log.debug({config: tool.config}, 'tool initialized');
+        tool.log.trace({config: tool.config}, 'tool initialized');
         callback(null, tool);
     });
 }
