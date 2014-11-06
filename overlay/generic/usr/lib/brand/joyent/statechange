@@ -28,7 +28,7 @@ jst_vrrp="yes"
 # jst_simplefs="yes"
 
 # Should we show snapshots?
-jst_showsnap="yes"
+# jst_showsnap="yes"
 
 # Where does the mdata socket live?
 jst_mdatapath="/.zonecontrol/"
