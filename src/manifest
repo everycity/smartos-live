@@ -268,6 +268,7 @@ f usr/vm/test/common/vmtest.js 0444 root bin
 f usr/vm/test/runtest 0555 root bin
 f usr/vm/test/runtests 0555 root bin
 f usr/vm/sbin/add-userscript 0555 root bin
+f usr/vm/sbin/dockerinit 0555 root bin
 f usr/vm/sbin/filewait 0555 root bin
 f usr/vm/sbin/rotate-kvm-logs.sh 0555 root bin
 f usr/vm/sbin/rotate-logs.sh 0555 root bin
@@ -490,6 +491,7 @@ f usr/vm/node_modules/nodeunit-plus/node_modules/once/README.md 0644 root root
 f usr/vm/node_modules/nodeunit-plus/node_modules/once/package.json 0644 root root
 f usr/vm/node_modules/nodeunit-plus/node_modules/once/LICENSE 0644 root root
 f usr/vm/node_modules/nopt.js 0444 root bin
+f usr/vm/node_modules/openonerrlogger.js 0444 root bin
 f usr/vm/node_modules/props.js 0444 root bin
 f usr/vm/node_modules/proptable.js 0444 root bin
 f usr/vm/node_modules/qmp.js 0444 root bin
