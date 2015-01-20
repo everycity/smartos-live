@@ -373,19 +373,6 @@ execCmdline()
     int _stdin, _stdout, _stderr;
     char *execname;
 
-    dlog("DROP PRIVS\n");
-
-    if (setgid(grp->gr_gid) != 0) {
-        fatal(ERR_SETGID, "setgid(%d): %s\n", grp->gr_gid, strerror(errno));
-    }
-    if (initgroups(pwd->pw_name, grp->gr_gid) != 0) {
-        fatal(ERR_INITGROUPS, "initgroups(%s,%d): %s\n", pwd->pw_name,
-            grp->gr_gid, strerror(errno));
-    }
-    if (setuid(pwd->pw_uid) != 0) {
-        fatal(ERR_SETUID, "setuid(%d): %s\n", pwd->pw_uid, strerror(errno));
-    }
-
     execname = execName(cmdline[0]);
 
     dlog("SWITCHING TO /dev/zfd/*\n");
@@ -426,6 +413,23 @@ execCmdline()
     if (dup2(_stderr, 2) == -1) {
         fatal(ERR_UNEXPECTED, "failed to dup2(_stderr, 2): %s\n",
             strerror(errno));
+    }
+
+    /*
+     * We need to drop privs *after* we've setup /dev/zfd/[0-2] since that
+     * requires being root.
+     */
+    dlog("DROP PRIVS\n");
+
+    if (setgid(grp->gr_gid) != 0) {
+        fatal(ERR_SETGID, "setgid(%d): %s\n", grp->gr_gid, strerror(errno));
+    }
+    if (initgroups(pwd->pw_name, grp->gr_gid) != 0) {
+        fatal(ERR_INITGROUPS, "initgroups(%s,%d): %s\n", pwd->pw_name,
+            grp->gr_gid, strerror(errno));
+    }
+    if (setuid(pwd->pw_uid) != 0) {
+        fatal(ERR_SETUID, "setuid(%d): %s\n", pwd->pw_uid, strerror(errno));
     }
 
     execve(execname, cmdline, env);
@@ -873,7 +877,7 @@ setupWorkdir()
             }
         }
     } else {
-        workdir = pwd->pw_dir;
+        workdir = "/";
     }
 
     dlog("WORKDIR '%s'\n", workdir);
@@ -979,6 +983,7 @@ killIpmgmtd()
     struct door_info info;
     pid_t ipmgmtd_pid;
     char *should_kill;
+    int status;
 
     should_kill = (char *) mdataGet("docker:noipmgmtd");
     if ((should_kill == NULL) || (strncmp(should_kill, "true", 4) != 0)) {
@@ -1009,6 +1014,7 @@ killIpmgmtd()
                 strerror(errno));
         } else {
             dlog("KILLED ipmgmtd[%d]\n", ipmgmtd_pid);
+            waitpid(ipmgmtd_pid, &status, 0);
         }
     }
 }
