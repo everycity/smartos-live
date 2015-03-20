@@ -136,7 +136,7 @@ function get_nonglobal_info()
         if [[ $(/usr/sbin/zfs list -H | wc -l | tr -d ' ') != 0 ]]; then
             ROOTQUOTA=$(($(/usr/sbin/zfs get -pHo value quota / | tr -d 'GMT') / (1024 * 1024 * 1024)))
             if [[ $? == 0 && ${ROOTQUOTA} != "0" ]]; then
-                QUOTA="${ROOTQUOTA}G"
+                QUOTA="${ROOTQUOTA}"
             fi
         else
             QUOTA=$(($(df -k / | tail -1 | awk '{ print $2 }') / (1024 * 1024)))
@@ -300,16 +300,25 @@ function net_conf_grep()
 
 function get_aggregation_mappings()
 {
+    local aggr_name
     count=1
     for line in $(net_conf_grep "^[a-zA-Z0-9_]*_aggr="); do
         fields=(${line//=/ })
         key=${fields[0]}
         val=${fields[1]}
 
-        Aggrs[${count}]=$(echo ${key} | sed -e 's/_aggr$//')
+        aggr_name=$(echo ${key} | sed -e 's/_aggr$//')
+        Aggrs[${count}]=$aggr_name
         macs=(${val//,/ })
         for mac in "${macs[@]}"; do
             normalize_mac ${mac}
+
+            if [[ -z ${AggrMacs[${aggr_name}]} ]]; then
+                AggrMacs[${aggr_name}]=${normalized}
+            else
+                AggrMacs[${aggr_name}]="${AggrMacs[${aggr_name}]},${normalized}"
+            fi
+
             if [[ -z ${AggrInterfaceList[${count}]} ]]; then
                 AggrInterfaceList[${count}]=${normalized}
             else
@@ -557,6 +566,7 @@ function get_aggr_params()
             eval "Aggregation_${aggr}_LACP_mode=${lacp_val}"
             eval "Aggregation_${aggr}_Backup_Interface=${backup_nic}"
             eval "Aggregation_${aggr}_Interfaces=${list}"
+            eval "Aggregation_${aggr}_MACs=${AggrMacs[${aggr}]}"
 
             ((c++))
         fi
@@ -771,6 +781,8 @@ END
             backup_var="Aggregation_${aggr}_Backup_Interface"
             eval "backup=\${${backup_var}}"
             echo "${backup_var}=${backup}"
+
+            echo "Aggregation_${aggr}_MACs=${AggrMacs[${aggr}]}"
         done
     fi
 
