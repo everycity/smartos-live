@@ -1,5 +1,16 @@
 # imgadm changelog
 
+## 3.1.2
+
+- [OS-4102] OS-4097 broke import of uncompressed images
+
+## 3.1.2
+
+*Bad version.*
+
+- [OS-4097] support xz-compressed Docker images, e.g. learn/tutorial
+
+
 ## 3.1.1
 
 - [#412] support 'imgadm create' on non-cloned KVM VMs
