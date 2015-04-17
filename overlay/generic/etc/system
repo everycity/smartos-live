@@ -134,10 +134,6 @@ set apix:apic_timer_preferred_mode=0
 set dump_metrics_on=1
 
 *
-* ixgbe: allow for unsupported SFP modules
-*
-set ixgbe:ixgbe_allow_unsupported_sfp=1
-
 * The traditional (and essentially entirely brain dead) cfgadm(1M)-centric
 * model of hotpluggin' appears to be basically unnecessary.  This tunable
 * enables the system to create device nodes for newly inserted devices
