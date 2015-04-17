@@ -2,7 +2,7 @@ mkdir -p projects/local
 (cd projects/local && [[ -d kvm ]] \
     || git clone http://github.com/joyent/illumos-kvm kvm)
 (cd projects/local && [[ -d kvm-cmd ]] \
-    || git clone http://github.com/joyent/illumos-kvm-cmd kvm-cmd)
+    || git clone -b ec http://github.com/everycity/illumos-kvm-cmd kvm-cmd)
 (cd overlay && [[ -d smartos ]] \
     || git clone -b ec http://github.com/everycity/smartos-overlay smartos)
 
