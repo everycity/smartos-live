@@ -13,4 +13,4 @@ ON_CLOSED_BINS_ND_URL="http://dlc.sun.com/osol/on/downloads/20100817/on-closed-b
 GET_ILLUMOS="(git clone -b smartos/ec http://github.com/everycity/illumos-gate illumos)"
 GET_ILLUMOS_EXTRA="git clone -b ec http://github.com/everycity/illumos-extra illumos-extra"
 ILLUMOS_ADJUNCT_TARBALL_URL="https://download.joyent.com/pub/build/adjuncts/"
-OVERLAYS="ec smartos generic"
+OVERLAYS="ec generic"
