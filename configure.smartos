@@ -1,16 +1,19 @@
 mkdir -p projects/local
+(cd projects/local && [[ -d ur-agent ]] \
+    || git clone https://github.com/joyent/sdc-ur-agent.git ur-agent)
 (cd projects/local && [[ -d kvm ]] \
-    || git clone http://github.com/joyent/illumos-kvm kvm)
+    || git clone https://github.com/joyent/illumos-kvm.git kvm)
 (cd projects/local && [[ -d kvm-cmd ]] \
-    || git clone -b ec http://github.com/everycity/illumos-kvm-cmd kvm-cmd)
+    || git clone -b ec https://github.com/everycity/illumos-kvm-cmd.git kvm-cmd)
+(cd projects/local && [[ -d mdata-client ]] \
+    || git clone https://github.com/joyent/mdata-client.git mdata-client)
 
 PUBLISHER="everycity"
 RELEASE_VER="everycity_`date +%Y%m%d`"
 SUNW_SPRO12_URL="https://download.joyent.com/pub/build/SunStudio.tar.bz2"
-GCC44_URL="https://download.joyent.com/pub/build/gcc-4.tar.bz2"
-ON_CLOSED_BINS_URL="http://dlc.sun.com/osol/on/downloads/20100817/on-closed-bins.i386.tar.bz2"
-ON_CLOSED_BINS_ND_URL="http://dlc.sun.com/osol/on/downloads/20100817/on-closed-bins-nd.i386.tar.bz2"
-GET_ILLUMOS="(git clone -b smartos/ec http://github.com/everycity/illumos-gate illumos)"
-GET_ILLUMOS_EXTRA="git clone -b ec http://github.com/everycity/illumos-extra illumos-extra"
+ON_CLOSED_BINS_URL="https://download.joyent.com/pub/build/illumos/on-closed-bins.i386.tar.bz2"
+ON_CLOSED_BINS_ND_URL="https://download.joyent.com/pub/build/illumos/on-closed-bins-nd.i386.tar.bz2"
+GET_ILLUMOS="git clone -b smartos/ec https://github.com/joyent/illumos-joyent.git illumos"
+GET_ILLUMOS_EXTRA="git clone -b ec git://github.com/everycity/illumos-extra.git illumos-extra"
 ILLUMOS_ADJUNCT_TARBALL_URL="https://download.joyent.com/pub/build/adjuncts/"
 OVERLAYS="ec generic"

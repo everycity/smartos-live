@@ -1,3 +1,8 @@
-illumos-joyent: smartos/ec
+# after editing, rerun configure
+illumos-live: master
 illumos-extra: ec
+illumos-joyent: smartos/ec
+ur-agent: master
+kvm: master
 kvm-cmd: ec
+mdata-client: master
