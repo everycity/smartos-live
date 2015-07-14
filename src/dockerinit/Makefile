@@ -13,47 +13,79 @@
 # Copyright 2015 Joyent, Inc.
 #
 
-JSON_OBJS=json-nvlist/json-nvlist.o
-JSON_LIBS=-lnvpair
-MDATA_OBJS= \
-	mdata-client/dynstr.o \
-	mdata-client/proto.o \
-	mdata-client/common.o \
-	mdata-client/base64.o \
-	mdata-client/crc32.o \
-	mdata-client/reqid.o \
-	mdata-client/plat/sunos.o \
-	mdata-client/plat/unix_common.o
-MDATA_LIBS=-lnsl -lsocket -lsmbios
-NET_LIBS=-lipadm -linetutil -lnsl -lsocket
-LIBS=$(JSON_LIBS) $(MDATA_LIBS) $(NET_LIBS)
-OBJS=$(JSON_OBJS) $(MDATA_OBJS) src/docker-common.o
-CTFCONVERT = /usr/bin/true
-CTFMERGE = /usr/bin/true
+BASE :=		$(PWD)
+DESTDIR =	$(BASE)/../../proto
+NATIVEDIR =	$(BASE)/../../proto.strap
 
-# NOTE: we add the '-z now' here to the CFLAGS because otherwise we'll try to
-# load libdladm.so.1 after we've entered a chroot and it will look in the wrong
-# place (/native/... when we've already chroot()'d to /native).
-CC=gcc
-CFLAGS=-Wall -Wextra -D__HAVE_BOOLEAN_T -m32 -z now
-CSTYLE=../../tools/cstyle
+PROGRAMS =	dockerinit dockerexec
 
-all: build/dockerinit build/dockerexec
+.SUFFIXES:
+.SECONDARY:
+
+GCC =		$(NATIVEDIR)/usr/bin/gcc
+GXX =		$(NATIVEDIR)/usr/bin/g++
+
+SYSINCDIRS =	/usr/include
+SYSLIBDIRS =	/usr/lib /lib
+
+CPPFLAGS =	$(SYSINCDIRS:%=-isystem $(DESTDIR)/%)
+LDFLAGS =	$(SYSLIBDIRS:%=-L$(DESTDIR)/%) \
+		-Wl,-zassert-deflib -Wl,-zfatal-warnings
+
+JSON_OBJS =	json-nvlist.o
+JSON_LIBS =	-lnvpair -lcmdutils
+
+MDATA_OBJS = \
+		mdata-client/dynstr.o \
+		mdata-client/proto.o \
+		mdata-client/common.o \
+		mdata-client/base64.o \
+		mdata-client/crc32.o \
+		mdata-client/reqid.o \
+		mdata-client/plat/sunos.o \
+		mdata-client/plat/unix_common.o
+MDATA_LIBS =	-lnsl -lsocket -lsmbios
+
+NET_LIBS =	-lipadm -linetutil -lnsl -lsocket
+
+STRINGS_OBJS =	strlist.o strpath.o
+
+DOCKER_OBJS =	docker-common.o
+
+BUILD :=	build
+OBJDIR :=	obj
+
+BUILD_PROGS =	$(PROGRAMS:%=$(BUILD)/%)
+
+LIBS =		$(JSON_LIBS) $(MDATA_LIBS) $(NET_LIBS)
+
+OBJS =		$(JSON_OBJS:%=obj/%) \
+		$(MDATA_OBJS) \
+		$(STRINGS_OBJS:%=obj/%) \
+		$(DOCKER_OBJS:%=obj/%)
+
+CTFCONVERT =	/usr/bin/true
+CTFMERGE =	/usr/bin/true
+
+CC =		$(GCC)
+CFLAGS =	-std=gnu99 -Wall -Wextra -Werror -D__HAVE_BOOLEAN_T -m32 -g \
+		-I$(BASE)/../common/strings
+
+COMPILE_C =	$(CC) $(CPPFLAGS) $(LDFLAGS) -c $(CFLAGS) -o $@ $<
+
+CSTYLE =	../../tools/cstyle
+
+all: $(BUILD_PROGS)
 
 install: all
 
-build/dockerexec: src/dockerexec.c $(OBJS)
-	mkdir -p build
-	$(CC) $(CFLAGS) -o build/dockerexec src/dockerexec.c $(OBJS) $(LIBS)
-	$(CTFMERGE) -L VERSION -o $@ $(OBJS)
+#
+# Compilation and Linking Targets
+#
 
-build/dockerinit: src/dockerinit.c $(OBJS)
-	mkdir -p build
-	$(CC) $(CFLAGS) -o build/dockerinit src/dockerinit.c $(OBJS) $(LIBS)
+$(BUILD)/%: obj/%.o $(OBJS) | $(BUILD)
+	$(CC) $(CPPFLAGS) $(LDFLAGS) $(CFLAGS) -o $@ $^ $(LIBS)
 	$(CTFMERGE) -L VERSION -o $@ $(OBJS)
-
-src/docker-common.o: src/docker-common.c
-	$(CC) -c $(CFLAGS) -o $@ $<
 
 mdata-client/plat/%.o: mdata-client/plat/%.c
 	(cd mdata-client && $(MAKE) plat/$(@F))
@@ -61,8 +93,24 @@ mdata-client/plat/%.o: mdata-client/plat/%.c
 mdata-client/%.o: mdata-client/%.c
 	(cd mdata-client && $(MAKE) $(@F))
 
-json-nvlist/%.o: json-nvlist/%.c
-	$(CC) -c $(CFLAGS) -o $@ $<
+$(OBJDIR)/%.o: json-nvlist/%.c | $(OBJDIR)
+	$(COMPILE_C)
+	$(CTFCONVERT) -L VERSION $@
+
+$(OBJDIR)/%.o: src/%.c | $(OBJDIR)
+	$(COMPILE_C)
+	$(CTFCONVERT) -L VERSION $@
+
+$(OBJDIR)/%.o: $(BASE)/../common/strings/%.c | $(OBJDIR)
+	$(COMPILE_C)
+	$(CTFCONVERT) -L VERSION $@
+
+$(OBJDIR) $(BUILD):
+	mkdir -p $@
+
+#
+# Check, Lint and Clean Targets
+#
 
 check: src/*.c
 	@echo $(PWD)/$^
@@ -72,8 +120,8 @@ lint:
 	/usr/bin/true
 
 clean:
-	rm -f $(OBJS) build/*
-
-%.o: %.c
-	$(CC) $(CFLAGS) -o $@ -c $<
-	$(CTFCONVERT) -L VERSION $@
+	rm -f $(BUILD_PROGS)
+	rm -f $(PROGRAMS:%=obj/%.o)
+	rm -f $(OBJS)
+	if test -d $(BUILD); then rmdir $(BUILD); fi
+	if test -d $(OBJDIR); then rmdir $(OBJDIR); fi
