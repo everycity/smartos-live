@@ -4,5 +4,6 @@ illumos-extra: ec
 illumos-joyent: smartos/ec
 ur-agent: master
 kvm: master
-kvm-cmd: ec
+kvm-cmd: master
+kvm-cmd-ec: ec
 mdata-client: master
