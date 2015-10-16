@@ -45,6 +45,7 @@
 #include <termios.h>
 #include <unistd.h>
 #include <zone.h>
+#include <libcontract.h>
 
 #include <arpa/inet.h>
 
@@ -61,6 +62,8 @@
 #include <sys/wait.h>
 #include <sys/stat.h>
 #include <sys/zfd.h>
+#include <sys/ctfs.h>
+#include <sys/contract/process.h>
 
 #include "../json-nvlist/json-nvlist.h"
 #include "../mdata-client/common.h"
@@ -93,11 +96,12 @@ void runIpmgmtd(void);
 void setupHostname();
 void setupInterface(nvlist_t *data);
 void setupInterfaces();
-static void makeMux(int stdid, int logid);
+static void makeMux(int stdid, int logid, boolean_t use_flowcon);
 static void setupTerminal(boolean_t ctty);
 static void setupLogging(boolean_t ctty);
 void waitIfAttaching();
 void makePath(const char *, char *, size_t);
+static int init_template(int);
 
 /* global metadata client bits */
 int initialized_proto = 0;
@@ -155,6 +159,9 @@ runIpmgmtd(void)
 {
     pid_t pid;
     int status;
+    int tmplfd;
+
+    tmplfd = init_template(0);
 
     if ((pid = fork()) == -1) {
         fatal(ERR_FORK_FAILED, "fork() failed: %s\n", strerror(errno));
@@ -172,6 +179,9 @@ runIpmgmtd(void)
             NULL
         };
 
+        (void) ct_tmpl_clear(tmplfd);
+        (void) close(tmplfd);
+
         makePath(IPMGMTD, cmd, sizeof (cmd));
 
         execve(cmd, argv, envp);
@@ -179,6 +189,8 @@ runIpmgmtd(void)
     }
 
     /* parent */
+    (void) ct_tmpl_clear(tmplfd);
+    (void) close(tmplfd);
 
     dlog("INFO started ipmgmtd[%d]\n", (int)pid);
 
@@ -237,7 +249,7 @@ zfd_ready()
 }
 
 static void
-makeMux(int stdid, int logid)
+makeMux(int stdid, int logid, boolean_t flow_control)
 {
     int lfd = -1;
     int sfd = -1;
@@ -274,12 +286,56 @@ makeMux(int stdid, int logid)
         fatal(ERR_IOCTL_ZFD, "failed to issue ioctl to link streams\n");
     }
 
+    if (flow_control) {
+        if (ioctl(lfd, ZFD_MUX_FLOWCON, 1) != 0) {
+            fatal(ERR_IOCTL_ZFD, "failed to issue flow control ioctl\n");
+        }
+    }
+
     if (sfd != -1) {
         (void) close(sfd);
     }
     if (lfd != -1) {
         (void) close(lfd);
     }
+}
+
+static int
+init_template(int flag)
+{
+    int fd;
+
+    if ((fd = open64(CTFS_ROOT "/process/template", O_RDWR)) == -1) {
+        fatal(ERR_CONTRACT, "open %s/process/template failed: %s\n",
+            CTFS_ROOT, strerror(errno));
+    }
+
+    if (ct_tmpl_set_critical(fd, 0) != 0) {
+        fatal(ERR_CONTRACT, "ct_tmpl_set_critical failed: %s\n",
+            strerror(errno));
+    }
+    if (ct_tmpl_set_informative(fd, 0) != 0) {
+        fatal(ERR_CONTRACT, "ct_tmpl_set_informative failed: %s\n",
+            strerror(errno));
+    }
+    if (ct_pr_tmpl_set_fatal(fd, CT_PR_EV_HWERR) != 0) {
+        fatal(ERR_CONTRACT, "ct_pr_tmpl_set_fatal failed: %s\n",
+            strerror(errno));
+    }
+    if (ct_pr_tmpl_set_param(fd, flag) != 0) {
+        fatal(ERR_CONTRACT, "ct_pr_tmpl_set_param failed: %s\n",
+            strerror(errno));
+    }
+
+    /* requires PRIV_CONTRACT_IDENTITY so ignore error if it fails */
+    (void) ct_pr_tmpl_set_svc_fmri(fd, "svc:/dockerinit/child:default");
+
+    if (ct_tmpl_activate(fd) != 0) {
+        fatal(ERR_CONTRACT, "ct_tmpl_activate failed: %s\n",
+            strerror(errno));
+    }
+
+    return (fd);
 }
 
 static char **
@@ -331,6 +387,8 @@ setupLogging(boolean_t ctty)
     int _stdout;
     int _stderr;
     int tmpfd;
+    int tmplfd;
+    boolean_t use_flowcon = B_FALSE;
 
     if ((data = mdataGet("docker:logdriver")) != NULL) {
         if (strcmp("json-file", data) != 0) {
@@ -372,6 +430,14 @@ setupLogging(boolean_t ctty)
     if (pid == 0) {
         /* child */
 
+        /*
+         * The init process and the logger must be in the same contract so that
+         * init will be killed if the logger exits. However, we neeed to ensure
+         * that any children of the logger are in a separate contract.
+         */
+        tmplfd = init_template(CT_PR_KEEP_EXEC);
+        (void) close(tmplfd);
+
         // Keep descriptor 0 as a copy of the log descriptor so that errors
         // until exec() (or if it fails) will go to the dockerinit log. If exec
         // is successful, the descriptor should close since it's opened CLOEXEC.
@@ -401,7 +467,7 @@ setupLogging(boolean_t ctty)
 
         // setup the zfd redirection
         if (ctty) {
-            makeMux(0, 1);
+            makeMux(0, 1, use_flowcon);
             tmpfd = open("/dev/zfd/1", O_RDONLY);
             if (tmpfd != 3) {
                 fatal(ERR_OPEN_CONSOLE, "failed to open /dev/zfd/1: %s\n",
@@ -413,8 +479,8 @@ setupLogging(boolean_t ctty)
                     strerror(errno));
             }
         } else {
-            makeMux(1, 3);
-            makeMux(2, 4);
+            makeMux(1, 3, use_flowcon);
+            makeMux(2, 4, use_flowcon);
             tmpfd = open("/dev/zfd/3", O_RDONLY);
             if (tmpfd != 3) {
                 fatal(ERR_OPEN_CONSOLE, "failed to open /dev/zfd/3: %s\n",
@@ -455,6 +521,14 @@ setupLogging(boolean_t ctty)
     }
 
     /* parent */
+
+    /*
+     * The init process and the logger must be in the same contract so that
+     * init will be killed if the logger exits. However, we neeed to ensure
+     * that any children of the init process are in a separate contract.
+     */
+    tmplfd = init_template(CT_PR_KEEP_EXEC);
+    (void) close(tmplfd);
 
     dlog("INFO started logger[%d] (%s)\n", (int)pid, log_driver);
 

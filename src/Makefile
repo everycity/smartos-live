@@ -72,6 +72,11 @@ vmbundle :	CPPFLAGS +=	-D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64
 sdc-on-tty :	CFLAGS +=	$(OPT_FLAG)
 zoneevent :	LIBS +=		-lnvpair -lsysevent
 sysevent :	LIBS +=		-lnvpair -lsysevent
+sysinfo_mod.so : CPPFLAGS +=	-D_REENTRANT
+sysinfo_mod.so : CFLAGS +=	-fpic -Wno-unused-parameter
+sysinfo_mod.so : LDFLAGS +=	-shared -Wl,-ztext
+
+SYSINFO_MOD_DIR = $(DESTDIR)/usr/lib/sysevent/modules
 
 # These files will get run through jsstyle and jslint on 'make check'
 JS_CHECK_TARGETS=\
@@ -104,6 +109,7 @@ JS_CHECK_TARGETS=\
 	vm/tests/test-lastexited.js \
 	vm/tests/test-openonerrlogger.js \
 	vm/tests/test-reboot.js \
+	vm/tests/test-reprovision.js \
 	vm/tests/test-spoof-opts.js \
 	vm/tests/test-tmpfs.js \
 	vm/tests/test-update.js \
@@ -124,6 +130,7 @@ C_CHECK_TARGETS=\
 	zfs_recv.c \
 	zfs_send.c \
 	zoneevent.c \
+	sysinfo_mod.c \
 	sysevent.c \
 	dockerinit/src/dockerexec.c \
 	dockerinit/src/dockerinit.c \
@@ -334,6 +341,7 @@ TARGETS = \
 	zfs_send \
 	zoneevent \
 	sysevent \
+	sysinfo_mod.so \
 	vm/node_modules/props.js \
 	$(EXPAT.NODE) \
 	$(DTRACE_PROVIDER.NODE) \
@@ -484,6 +492,9 @@ install: all $(SUBDIRS)
 	mkdir -m 0755 -p $(DESTDIR)/usr/lib/sdc
 	cp -p net-boot-config $(DESTDIR)/usr/lib/sdc
 	cd routeinfo && $(MAKE) install $(SUBDIRS_ENV)
+	mkdir -p $(SYSINFO_MOD_DIR)
+	rm -f $(SYSINFO_MOD_DIR)/sysinfo_mod.so
+	/usr/sbin/install -f $(SYSINFO_MOD_DIR) -m 0555 sysinfo_mod.so
 
 check: $(JSLINT) $(SUBDIRS)
 	@echo "==> Running cstyle..."
@@ -667,5 +678,7 @@ $(ZUTIL_BINDINGS.NODE): FRC
 		CTFCONVERT=$(CTFCONVERT) \
 		CTFMERGE=$(CTFMERGE)
 
+$(SYSINFO_MOD): $(SYSINFO_MOD_SRC)
+	$(GCC) $(CPPFLAGS) $(CFLAGS) -o $@ -c $<
 
 FRC:
