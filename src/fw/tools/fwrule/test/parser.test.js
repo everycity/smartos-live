@@ -20,7 +20,7 @@
  *
  * CDDL HEADER END
  *
- * Copyright (c) 2014, Joyent, Inc. All rights reserved.
+ * Copyright (c) 2016, Joyent, Inc. All rights reserved.
  *
  *
  * Unit tests for the firewall rule parser
@@ -151,9 +151,8 @@ exports['case insensitivity'] = function (t) {
 exports['port ranges'] = function (t) {
 
     var rangeA = {
-        from: [ [ 'subnet', '10.8.0.0/16' ],
-                        [ 'ip', '10.9.0.1' ] ],
-        to: [ [ 'wildcard', 'vmall' ] ],
+        from: [ [ 'ip', '1.2.3.4' ] ],
+        to: [ [ 'tag', 'some-tag' ] ],
         action: 'allow',
         protocol: {
             name: 'tcp',
@@ -171,6 +170,21 @@ exports['port ranges'] = function (t) {
             t.ifError(err);
         }
     });
+    t.done();
+};
+
+exports['version mismatch'] = function (t) {
+    try {
+        parser.parse('FROM tag foo TO tag bar ALLOW TCP PORTS 20-30',
+            { maxVersion: 1 });
+        t.ok(false,
+            'Using port ranges is a newer feature and should fail in v1');
+    } catch (err) {
+        t.deepEqual(err.message,
+            'The rule uses a feature (port ranges) newer than this API allows',
+            'Correct error message for using ports in version 1');
+    }
+    t.done();
 };
 
 exports['icmp with code'] = function (t) {
@@ -191,6 +205,61 @@ exports['icmp with code'] = function (t) {
     t.done();
 };
 
+exports['icmp type all'] = function (t) {
+    var vm = 'b0b92cd9-1fe7-4636-8477-81d2742566c2';
+
+    t.deepEqual(parser.parse(
+        util.format('FROM ip 10.0.0.2 TO vm %s ALLOW icmp type all', vm)),
+        { from: [ [ 'ip', '10.0.0.2' ] ],
+            to: [ [ 'vm', vm ] ],
+            action: 'allow',
+            protocol: {
+                name: 'icmp',
+                targets: [ 'all' ]
+            }
+        }, 'icmp type all');
+
+    t.deepEqual(parser.parse(
+        util.format('FROM ip 10.0.0.2 TO vm %s ALLOW icmp ( TYPE ALL )', vm)),
+        { from: [ [ 'ip', '10.0.0.2' ] ],
+            to: [ [ 'vm', vm ] ],
+            action: 'allow',
+            protocol: {
+                name: 'icmp',
+                targets: [ 'all' ]
+            }
+        }, 'icmp type all in parens');
+
+    t.done();
+};
+
+exports['icmp6 type all'] = function (t) {
+    var vm = 'b0b92cd9-1fe7-4636-8477-81d2742566c2';
+
+    t.deepEqual(parser.parse(
+        util.format('FROM ip 10.0.0.2 TO vm %s ALLOW icmp6 type all', vm)),
+        { from: [ [ 'ip', '10.0.0.2' ] ],
+            to: [ [ 'vm', vm ] ],
+            action: 'allow',
+            protocol: {
+                name: 'icmp6',
+                targets: [ 'all' ]
+            }
+        }, 'icmp6 type all');
+
+    t.deepEqual(parser.parse(
+        util.format('FROM ip 10.0.0.2 TO vm %s ALLOW icmp6 ( TYPE ALL )', vm)),
+        { from: [ [ 'ip', '10.0.0.2' ] ],
+            to: [ [ 'vm', vm ] ],
+            action: 'allow',
+            protocol: {
+                name: 'icmp6',
+                targets: [ 'all' ]
+            }
+        }, 'icmp6 type all in parens');
+
+    t.done();
+};
 
 exports['tag with value'] = function (t) {
     var ruleTxt = 'FROM tag foo = bar TO ip 8.8.8.8 BLOCK udp PORT 53';

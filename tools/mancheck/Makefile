@@ -10,7 +10,7 @@
 #
 
 #
-# Copyright 2015 Joyent, Inc.
+# Copyright 2016 Joyent, Inc.
 #
 
 PROG =		mancheck
@@ -42,29 +42,24 @@ LDLIBS =					\
 ILLUMOS_SRC =	../../projects/illumos
 TOOLS_BIN =	$(ILLUMOS_SRC)/usr/src/tools/proto/root_i386-nd/opt/onbld/bin
 CC =		gcc
-CTFCONVERT =	$(TOOLS_BIN)/i386/ctfconvert
-CTFMERGE =	$(TOOLS_BIN)/i386/ctfmerge
+ALTCTFCONVERT =	$(TOOLS_BIN)/i386/ctfconvert-altexec
 
 COMPILE_C =	$(CC) -c -gdwarf-2 $(CFLAGS) -o $@ $^
-POSTPROC_O =	$(CTFCONVERT) -l $(PROG) $@
 
-all: mancheck
+all: $(PROG)
 
 %.o: %.c
 	$(COMPILE_C)
-	$(POSTPROC_O)
 
 %.o: ../common/%.c
 	$(COMPILE_C)
-	$(POSTPROC_O)
 
 %.o: ../../src/common/strings/%.c
 	$(COMPILE_C)
-	$(POSTPROC_O)
 
 mancheck: $(OBJECTS)
 	$(CC) -o $@ $^ $(LDLIBS)
-	$(CTFMERGE) -l $(PROG) -o $@ $(OBJECTS)
+	$(ALTCTFCONVERT) -l $(PROG) $@
 
 clean:
 	rm -f $(OBJECTS) $(PROG)

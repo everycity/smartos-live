@@ -4,6 +4,9 @@ d usr/lib/brand/lx 0755 root bin
 f usr/lib/brand/lx/lx_boot_zone_docker 0755 root root
 f usr/lib/brand/lx/routeinfo 0755 root root
 
+# automatically generated man.cf file
+f usr/share/man/man.cf 0444 root bin
+
 # imgadm
 s etc/bash/bash_completion.d/imgadm=/usr/img/etc/imgadm.completion
 s usr/sbin/dsadm=../img/sbin/imgadm
@@ -95,9 +98,9 @@ d usr/img/node_modules/extsprintf 0555 root bin
 d usr/img/node_modules/extsprintf/lib 0555 root bin
 f usr/img/node_modules/extsprintf/lib/extsprintf.js 0444 root bin
 f usr/img/node_modules/extsprintf/package.json 0444 root bin
-d usr/img/node_modules/findit 0555 root bin
-f usr/img/node_modules/findit/index.js 0444 root bin
-f usr/img/node_modules/findit/package.json 0444 root bin
+d usr/img/node_modules/findit2 0555 root bin
+f usr/img/node_modules/findit2/index.js 0444 root bin
+f usr/img/node_modules/findit2/package.json 0444 root bin
 d usr/img/node_modules/imgmanifest 0555 root bin
 d usr/img/node_modules/imgmanifest/lib 0555 root bin
 f usr/img/node_modules/imgmanifest/lib/imgmanifest.js 0444 root bin
@@ -829,6 +832,8 @@ f usr/node/0.10/node_modules/node_sqlite3.node 0444 root bin
 f usr/node/0.10/node_modules/system.js 0444 root bin
 f usr/node/0.10/node_modules/uuid.node 0444 root bin
 f usr/node/0.10/node_modules/zfs.js 0444 root bin
+f usr/node/0.10/node_modules/zonename.js 0444 root bin
+f usr/node/0.10/node_modules/zonename_binding.node 0444 root bin
 # 0-man-stamp
 d usr/share/man/man1m 0755 root bin
 f usr/share/man/man1m/diskinfo.1m 0444 root bin
